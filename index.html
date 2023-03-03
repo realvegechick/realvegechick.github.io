@@ -229,6 +229,134 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/03/03/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E6%90%9C%E7%B4%A2%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Vec's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2023/03/03/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E6%90%9C%E7%B4%A2%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F/" itemprop="url">Frida使用记录——搜索微信小程序</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-03-03T15:44:19+00:00">
+                2023-03-03
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="问题背景"><a href="#问题背景" class="headerlink" title="问题背景"></a>问题背景</h2><p>最近在研究小程序相关的安全问题，需要批量搜索、获取各端小程序。微信小程序之前可以直接使用subsearch的API来获取小程序的信息（虽然cookie有效期有点短）。但是现在新版的微信改用了其他方式，旧版微信也搜索不到小程序了，这个api似乎确凿是关闭了，因此需要另找一个比手动搜索效率更高的方式。</p>
+<h2 id="尝试思路"><a href="#尝试思路" class="headerlink" title="尝试思路"></a>尝试思路</h2><p>第一反应当然是看看换成什么别的API了，但是出乎意料的是，旧版微信上非常容易抓的包在新版中居然一个都见不到了，尝试了no_sslpinning和vpn转发的方式也没什么效果。约莫又是用了什么神奇的协议。<br>但是好在hooking可以一力破万法，不管什么协议总有个获取明文的地方，接下来就一头扎进代码开始逆向。</p>
+<h2 id="逆向寻找调用点"><a href="#逆向寻找调用点" class="headerlink" title="逆向寻找调用点"></a>逆向寻找调用点</h2><p>进入微信小程序的搜索界面，看看对应的activity：com.tencent.mm.plugin.webview.ui.tools.fts.MMFTSSearchTabWebViewUI<br>很好，看看里面代码长什么样：<br><img src="https://i.imgur.com/dFw97Yq.png"><br>评价为是空空如也。<br>换个思路，试试直接hook socket相关的类：<br><img src="https://i.imgur.com/tbj3Q8o.png"><br>调用栈里可以说是一点线索没给留下。但是不要气馁，在刚刚的初步逆向中可以发现，微信里大量调用了一个MicroMsg开头的log（com.tencent.mm.sdk.platformtools.Log），hook这个类想必能打印出很多信息（实际上有点太多了）。经过漫长的筛选，发现这样一条记录：<br><img src="https://i.imgur.com/d9iPfTL.png"><br>一眼看出这就是客户端获取的查询结果，那么看看调用栈中的com.tencent.mm.plugin.websearch.n$c，这个类应该是n的一个内部类，在处理返回包的时候run函数被安卓生命周期调用，因此调用栈里信息不足。<br>虽然我们直接hook它的构造函数，可以得到更早的调用信息，但是这整个流程都是处理服务器response的回调，继续追踪下去意义不大（血泪教训）。</p>
+<p>既然已经得到了获取返回值的函数，只需要寻找触发这一流程的起点，就可以实现自动化搜索小程序。<br>思路清晰之后，不难想到，我们需要找到这个搜索按钮的onlick函数。这个onClick必定在当前activity里面注册了onClickListener，既然我们看到的activity里面没东西，那么肯定是在父类里注册的。它的父类是com.tencent.mm.plugin.webview.ui.tools.fts.FTSSearchTabWebViewUI：<br><img src="https://i.imgur.com/lSgphD6.png"><br>细细一看也没有什么相关逻辑，只有一个取消的按钮。</p>
+<p>那么再看看父类的父类com.tencent.mm.plugin.webview.ui.tools.fts.FTSBaseWebViewUI：<br><img src="https://i.imgur.com/9Wccml1.png"><br>混淆比较严重，但是没关系，我们用objection直接hook所有函数，看看点击按钮的时候是哪个被触发了。结果来说，直接相关的只有p8，其中一眼就能看到这么一段代码：<br><img src="https://i.imgur.com/23HdloK.png"><br>q3是一个WebSearchView类型的成员，那么毫无疑问，它的FtsEditText就是我们的搜索框。getFtsEditText()返回的类是com.tencent.mm.ui.search.FTSEditTextView，看包名感觉离我们的目标已经很接近了。<br>这个类注册了好几个onClickListener，逐一排查之后，终于找到了我们追寻已久的按钮<br><img src="https://i.imgur.com/8nUe4HI.png"><br>经过测试，直接调用这个onClick函数的效果与我们手动点击是一样的，因此只需要在这里传入我们想搜索的关键字，再在之前找到的log里去取返回结果，我们就能完成小程序的自动化搜索。</p>
+<h2 id="编写Frida脚本"><a href="#编写Frida脚本" class="headerlink" title="编写Frida脚本"></a>编写Frida脚本</h2><p>1.触发onClick，这里需要传一个View当参数，我们用Java.choose找到当前的activity，用findViewById就能拿到这个button。（button的id在之前的逆向里已经通过getId()获取）</p>
+<p>2.传入我们想要的关键字。FTSEditTextView类通过getInEditTextQuery()和getTotalQuery()获取text的文本，hook这两个函数把返回值改为我们想要的值。</p>
+<p>3.从Log里读取返回结果。</p>
+<p>相关脚本已经整理在本人的github：<a target="_blank" rel="noopener" href="https://github.com/realvegechick/FridaRepository/tree/main/WeChatMiniAppSearcher">https://github.com/realvegechick/FridaRepository/tree/main/WeChatMiniAppSearcher</a></p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/02/16/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E5%AF%B9%E6%94%AF%E4%BB%98%E5%AE%9D%E8%BF%9B%E8%A1%8C%E6%8A%93%E5%8C%85/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -308,7 +436,7 @@
 </ol>
 <p>既然现有的方法都派不上用场了，就只能自己看看支付宝的代码是怎么写的了。</p>
 <h1 id="逆向网络SDK"><a href="#逆向网络SDK" class="headerlink" title="逆向网络SDK"></a>逆向网络SDK</h1><p>有一位前辈说过一个非常好的逆向思路：从头尾两个方向开始尝试。那么先hook一下socket看看调用栈，很快就能定位发包相关的逻辑：<br><img src="https://i.imgur.com/upaGAPx.png"><br>返回值就是我们需要的response，因此hook这个地方就能解决抓包的问题。</p>
-<h1 id="编写Frida脚本"><a href="#编写Frida脚本" class="headerlink" title="编写Frida脚本"></a>编写Frida脚本</h1><p>该函数可以调用同一个类下的getOriginRequest()方法获取发送的请求包，并且函数自己的返回值即为返回包。但是还有一点小小的问题：httpResponse的内容只能读取一次，我们自己读掉了应用就读不了了。尝试了各种方法都没能解决，最后只能采取最简单粗暴的方法：发送两次request，一次用来打印，另一次用来返回。反正tcp重传也是很正常的事情，应该没什么影响。<br>具体脚本参见：<a target="_blank" rel="noopener" href="https://github.com/realvegechick/AlipayCapture">https://github.com/realvegechick/AlipayCapture</a><br>一点不足之处就是不能修改response的内容，估计需要重新生成一个response类，怪麻烦的。目前这个脚本已经能够实时显示往来的流量，并且保存在&#x2F;data&#x2F;local&#x2F;tmp&#x2F;pcap&#x2F;raw.txt里面，满足了查看流量的需求。</p>
+<h1 id="编写Frida脚本"><a href="#编写Frida脚本" class="headerlink" title="编写Frida脚本"></a>编写Frida脚本</h1><p>该函数可以调用同一个类下的getOriginRequest()方法获取发送的请求包，并且函数自己的返回值即为返回包。但是还有一点小小的问题：httpResponse的内容只能读取一次，我们自己读掉了应用就读不了了。尝试了各种方法都没能解决，最后只能采取最简单粗暴的方法：发送两次request，一次用来打印，另一次用来返回。反正tcp重传也是很正常的事情，应该没什么影响。<br>具体脚本参见：<a target="_blank" rel="noopener" href="https://github.com/realvegechick/FridaRepository/tree/main/AlipayCapture">https://github.com/realvegechick/FridaRepository/tree/main/AlipayCapture</a><br>一点不足之处就是不能修改response的内容，估计需要重新生成一个response类，怪麻烦的。目前这个脚本已经能够实时显示往来的流量，并且保存在&#x2F;data&#x2F;local&#x2F;tmp&#x2F;pcap&#x2F;raw.txt里面，满足了查看流量的需求。</p>
 <h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
 <li>socket抓包：<a target="_blank" rel="noopener" href="http://missking.cc/2021/05/04/zhuabao/">http://missking.cc/2021/05/04/zhuabao/</a></li>
 <li>（过时的）支付宝mtop降级脚本：<a target="_blank" rel="noopener" href="https://zhangslob.github.io/2019/11/27/%E6%8A%93%E5%8C%85%EF%BC%9A%E6%B7%98%E5%AE%9D%E3%80%81%E6%94%AF%E4%BB%98%E5%AE%9D/">https://zhangslob.github.io/2019/11/27/%E6%8A%93%E5%8C%85%EF%BC%9A%E6%B7%98%E5%AE%9D%E3%80%81%E6%94%AF%E4%BB%98%E5%AE%9D/</a></li>
@@ -547,7 +675,7 @@
               
                 <a href="/archives/%7C%7C%20archive">
               
-                  <span class="site-state-item-count">2</span>
+                  <span class="site-state-item-count">3</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
