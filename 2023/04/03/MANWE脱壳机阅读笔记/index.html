@@ -79,13 +79,19 @@
 
 
 
-<meta property="og:type" content="website">
+<meta name="description" content="MANWE脱壳机阅读笔记背景pdd出事之后，我尝试逆向过mw01.bin的还原逻辑，但是花了很多时间也没有头绪。现在既然davinci大佬把脱壳机放出来了，自然要好好理解一下，也为以后遇到的VMP壳做准备。 ManweVmpLoader1234567891011121314151617public class ManweVmpLoader &amp;#123;    public static void">
+<meta property="og:type" content="article">
 <meta property="og:title" content="Vec&#39;s Blog">
-<meta property="og:url" content="http://realvegechick.github.io/index.html">
+<meta property="og:url" content="http://realvegechick.github.io/2023/04/03/MANWE%E8%84%B1%E5%A3%B3%E6%9C%BA%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/index.html">
 <meta property="og:site_name" content="Vec&#39;s Blog">
+<meta property="og:description" content="MANWE脱壳机阅读笔记背景pdd出事之后，我尝试逆向过mw01.bin的还原逻辑，但是花了很多时间也没有头绪。现在既然davinci大佬把脱壳机放出来了，自然要好好理解一下，也为以后遇到的VMP壳做准备。 ManweVmpLoader1234567891011121314151617public class ManweVmpLoader &amp;#123;    public static void">
 <meta property="og:locale">
+<meta property="og:image" content="https://i.imgur.com/e3NxN8x.png">
+<meta property="article:published_time" content="2023-04-03T05:38:52.417Z">
+<meta property="article:modified_time" content="2023-04-03T05:38:52.417Z">
 <meta property="article:author" content="Vec">
 <meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://i.imgur.com/e3NxN8x.png">
 
 
 
@@ -115,13 +121,13 @@
 
 
 
-  <link rel="canonical" href="http://realvegechick.github.io/"/>
+  <link rel="canonical" href="http://realvegechick.github.io/2023/04/03/MANWE脱壳机阅读笔记/"/>
 
 
 
 
 
-  <title>Vec's Blog</title>
+  <title> | Vec's Blog</title>
   
 
 
@@ -140,8 +146,7 @@
     
   
 
-  <div class="container sidebar-position-left 
-  page-home">
+  <div class="container sidebar-position-left page-post-detail">
     <div class="headband"></div>
 
     <header id="header" class="header" itemscope itemtype="http://schema.org/WPHeader">
@@ -214,9 +219,9 @@
         <div class="content-wrap">
           <div id="content" class="content">
             
-  <section id="posts" class="posts-expand">
+
+  <div id="posts" class="posts-expand">
     
-      
 
   
 
@@ -246,9 +251,7 @@
 
         
         
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/2023/04/03/MANWE%E8%84%B1%E5%A3%B3%E6%9C%BA%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/" itemprop="url">未命名</a></h1>
+          <h1 class="post-title" itemprop="name headline"></h1>
         
 
         <div class="post-meta">
@@ -298,9 +301,7 @@
       
 
       
-        
-          
-            <h1 id="MANWE脱壳机阅读笔记"><a href="#MANWE脱壳机阅读笔记" class="headerlink" title="MANWE脱壳机阅读笔记"></a>MANWE脱壳机阅读笔记</h1><h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>pdd出事之后，我尝试逆向过mw01.bin的还原逻辑，但是花了很多时间也没有头绪。现在既然davinci大佬把脱壳机放出来了，自然要好好理解一下，也为以后遇到的VMP壳做准备。</p>
+        <h1 id="MANWE脱壳机阅读笔记"><a href="#MANWE脱壳机阅读笔记" class="headerlink" title="MANWE脱壳机阅读笔记"></a>MANWE脱壳机阅读笔记</h1><h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>pdd出事之后，我尝试逆向过mw01.bin的还原逻辑，但是花了很多时间也没有头绪。现在既然davinci大佬把脱壳机放出来了，自然要好好理解一下，也为以后遇到的VMP壳做准备。</p>
 <h2 id="ManweVmpLoader"><a href="#ManweVmpLoader" class="headerlink" title="ManweVmpLoader"></a>ManweVmpLoader</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line">public class ManweVmpLoader &#123;</span><br><span class="line"></span><br><span class="line">    public static void main(String[] args) throws Throwable &#123;</span><br><span class="line">        String firmwarePath = &quot;/tmp/mw1.bin&quot;;</span><br><span class="line">        ManweVmpDataInputStream inputStream = new ManweVmpDataInputStream(Files.newInputStream(Paths.get(firmwarePath)));</span><br><span class="line">        ManweVmpDex manweVmpDex = new ManweVmpDex(inputStream);</span><br><span class="line">        System.out.printf(&quot;Load %d class%n&quot;, manweVmpDex.manweVmpClazzes.length);</span><br><span class="line">        if (inputStream.available() != 0) &#123;</span><br><span class="line">            throw new RuntimeException(String.format(&quot;%d bytes remaining&quot;, inputStream.available()));</span><br><span class="line">        &#125;</span><br><span class="line">        inputStream.close();</span><br><span class="line">        if (Files.notExists(Paths.get(&quot;/tmp/final_java/&quot;))) &#123;</span><br><span class="line">            new File(&quot;/tmp/final_java/&quot;).mkdirs();</span><br><span class="line">        &#125;</span><br><span class="line">        manweVmpDex.writeClazzes(&quot;/tmp/final_java/&quot;);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
 <p>这部分是脱壳机的起点，代码也比较短，容易理解。<br>首先将文件内容转化为ManweVmpDataInputStream，这个类支持对文件内容进行不同类型（int,double,UTF等等）的读取，跟核心逻辑关系不大，不再赘述。<br>之后把输入流导入ManweVmpDex，将文件还原为dex文件，并逐class写回文件系统。因此接下来的关键类就是ManweVmpDex。</p>
 <h2 id="ManweVmpDex"><a href="#ManweVmpDex" class="headerlink" title="ManweVmpDex"></a>ManweVmpDex</h2><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line">public ManweVmpDex(final ManweVmpDataInputStream in) throws IOException &#123;</span><br><span class="line">    final ManweVmpDataInputStream inStream = in;</span><br><span class="line">    // 读3字节的magic</span><br><span class="line">    inStream.read(this.magic);</span><br><span class="line">    if (magic[0] != 0x1A || magic[1] != 0x0C || magic[2] != 0x06) &#123;</span><br><span class="line">        throw new IOException(&quot;Check Magic Fail&quot;);</span><br><span class="line">    &#125;</span><br><span class="line"></span><br><span class="line">    // 读1字节的版本号</span><br><span class="line">    this.vmpVersion = inStream.read();</span><br><span class="line">    System.out.println(this.vmpVersion);</span><br><span class="line">    // 读 headers</span><br><span class="line">    if (this.vmpVersion == 5)</span><br><span class="line">        this.headers = inStream.readStrBytesMap();</span><br><span class="line">    else if (this.vmpVersion &lt; 5)</span><br><span class="line">        this.headers = new HashMap&lt;&gt;();</span><br><span class="line">    // 读 ConstantPool</span><br><span class="line">    this.constantPool = new ManweVmpConstantPool(inStream);</span><br><span class="line">    Pool</span><br><span class="line">    .init(this.constantPool);</span><br><span class="line">    // 读 N 个class</span><br><span class="line">    int clazzCount = inStream.readUnsignedShort();</span><br><span class="line">    this.manweVmpClazzes = new ManweVmpClazz[clazzCount];</span><br><span class="line">    for (int i = 0; i &lt; clazzCount; i++) &#123;</span><br><span class="line">        this.manweVmpClazzes[i] = new ManweVmpClazz(inStream, constantPool, this.vmpVersion);</span><br><span class="line">        System.out.printf(&quot;VmpClass [%d/%d] success, %s%n&quot;, i, clazzCount, this.manweVmpClazzes[i]);</span><br><span class="line">    &#125;</span><br><span class="line">    Arrays.stream(this.manweVmpClazzes).forEach(RuntimeTypeFixer::parseVmpClazz);</span><br><span class="line">    this.constantPool.records = PoolFixer.moveZeroToLast(this.constantPool, this.manweVmpClazzes);</span><br><span class="line">    this.constantPool.records = RuntimeTypeFixer.addSingleStringToPool(this.constantPool, &quot;Code&quot;);</span><br><span class="line">    this.constantPool.records = RuntimeTypeFixer.addStringToPool(this.constantPool);</span><br><span class="line"></span><br><span class="line">    PoolFixer.analyzeUtf8ToClazz(this.constantPool.records);</span><br><span class="line">    PoolFixer.patchForFieldAndMethod(this.constantPool.records);</span><br><span class="line">    Arrays.stream(this.manweVmpClazzes).forEach(clazz -&gt; &#123;</span><br><span class="line">        PoolFixer.patchConstantPoolForClassMeta(clazz, this.constantPool.records.length);</span><br><span class="line">    &#125;);</span><br><span class="line">    this.constantPool.records = PoolFixer.doFinal(this.constantPool.records);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
@@ -334,8 +335,6 @@
 <h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>Manwe的文件结构如下图所示：<br><img src="https://i.imgur.com/e3NxN8x.png"><br>阅读脱壳机代码的时候总是隐隐感觉像是内部人士写出来的，很多细节不像是单纯逆向能弄得这么清楚的。只能说多行不义必自毙吧。</p>
 <h2 id="参考文献"><a href="#参考文献" class="headerlink" title="参考文献"></a>参考文献</h2><p><a target="_blank" rel="noopener" href="https://github.com/davinci1012/pinduoduo_backdoor_unpacker">https://github.com/davinci1012/pinduoduo_backdoor_unpacker</a></p>
 
-          
-        
       
     </div>
     
@@ -352,141 +351,28 @@
       
 
       
-
-      
-
       
       
-        <div class="post-eof"></div>
+
       
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/03/03/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E6%90%9C%E7%B4%A2%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="Vec's Blog">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/2023/03/03/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E6%90%9C%E7%B4%A2%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F/" itemprop="url">Frida使用记录——搜索微信小程序</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
+        <div class="post-nav">
+          <div class="post-nav-next post-nav-item">
             
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-03-03T15:44:19+00:00">
-                2023-03-03
-              </time>
+              <a href="/2023/03/03/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E6%90%9C%E7%B4%A2%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F/" rel="next" title="Frida使用记录——搜索微信小程序">
+                <i class="fa fa-chevron-left"></i> Frida使用记录——搜索微信小程序
+              </a>
             
+          </div>
 
+          <span class="post-nav-divider"></span>
+
+          <div class="post-nav-prev post-nav-item">
             
-
-            
-          </span>
-
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
+          </div>
         </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
       
 
       
-        
-          
-            <h2 id="问题背景"><a href="#问题背景" class="headerlink" title="问题背景"></a>问题背景</h2><p>最近在研究小程序相关的安全问题，需要批量搜索、获取各端小程序。微信小程序之前可以直接使用subsearch的API来获取小程序的信息（虽然cookie有效期有点短）。但是现在新版的微信改用了其他方式，旧版微信也搜索不到小程序了，这个api似乎确凿是关闭了，因此需要另找一个比手动搜索效率更高的方式。</p>
-<h2 id="尝试思路"><a href="#尝试思路" class="headerlink" title="尝试思路"></a>尝试思路</h2><p>第一反应当然是看看换成什么别的API了，但是出乎意料的是，旧版微信上非常容易抓的包在新版中居然一个都见不到了，尝试了no_sslpinning和vpn转发的方式也没什么效果。约莫又是用了什么神奇的协议。<br>但是好在hooking可以一力破万法，不管什么协议总有个获取明文的地方，接下来就一头扎进代码开始逆向。</p>
-<h2 id="逆向寻找调用点"><a href="#逆向寻找调用点" class="headerlink" title="逆向寻找调用点"></a>逆向寻找调用点</h2><p>进入微信小程序的搜索界面，看看对应的activity：com.tencent.mm.plugin.webview.ui.tools.fts.MMFTSSearchTabWebViewUI<br>很好，看看里面代码长什么样：<br><img src="https://i.imgur.com/dFw97Yq.png"><br>评价为是空空如也。<br>换个思路，试试直接hook socket相关的类：<br><img src="https://i.imgur.com/tbj3Q8o.png"><br>调用栈里可以说是一点线索没给留下。但是不要气馁，在刚刚的初步逆向中可以发现，微信里大量调用了一个MicroMsg开头的log（com.tencent.mm.sdk.platformtools.Log），hook这个类想必能打印出很多信息（实际上有点太多了）。经过漫长的筛选，发现这样一条记录：<br><img src="https://i.imgur.com/d9iPfTL.png"><br>一眼看出这就是客户端获取的查询结果，那么看看调用栈中的com.tencent.mm.plugin.websearch.n$c，这个类应该是n的一个内部类，在处理返回包的时候run函数被安卓生命周期调用，因此调用栈里信息不足。<br>虽然我们直接hook它的构造函数，可以得到更早的调用信息，但是这整个流程都是处理服务器response的回调，继续追踪下去意义不大（血泪教训）。</p>
-<p>既然已经得到了获取返回值的函数，只需要寻找触发这一流程的起点，就可以实现自动化搜索小程序。<br>思路清晰之后，不难想到，我们需要找到这个搜索按钮的onlick函数。这个onClick必定在当前activity里面注册了onClickListener，既然我们看到的activity里面没东西，那么肯定是在父类里注册的。它的父类是com.tencent.mm.plugin.webview.ui.tools.fts.FTSSearchTabWebViewUI：<br><img src="https://i.imgur.com/lSgphD6.png"><br>细细一看也没有什么相关逻辑，只有一个取消的按钮。</p>
-<p>那么再看看父类的父类com.tencent.mm.plugin.webview.ui.tools.fts.FTSBaseWebViewUI：<br><img src="https://i.imgur.com/9Wccml1.png"><br>混淆比较严重，但是没关系，我们用objection直接hook所有函数，看看点击按钮的时候是哪个被触发了。结果来说，直接相关的只有p8，其中一眼就能看到这么一段代码：<br><img src="https://i.imgur.com/23HdloK.png"><br>q3是一个WebSearchView类型的成员，那么毫无疑问，它的FtsEditText就是我们的搜索框。getFtsEditText()返回的类是com.tencent.mm.ui.search.FTSEditTextView，看包名感觉离我们的目标已经很接近了。<br>这个类注册了好几个onClickListener，逐一排查之后，终于找到了我们追寻已久的按钮<br><img src="https://i.imgur.com/8nUe4HI.png"><br>经过测试，直接调用这个onClick函数的效果与我们手动点击是一样的，因此只需要在这里传入我们想搜索的关键字，再在之前找到的log里去取返回结果，我们就能完成小程序的自动化搜索。</p>
-<h2 id="编写Frida脚本"><a href="#编写Frida脚本" class="headerlink" title="编写Frida脚本"></a>编写Frida脚本</h2><p>1.触发onClick，这里需要传一个View当参数，我们用Java.choose找到当前的activity，用findViewById就能拿到这个button。（button的id在之前的逆向里已经通过getId()获取）</p>
-<p>2.传入我们想要的关键字。FTSEditTextView类通过getInEditTextQuery()和getTotalQuery()获取text的文本，hook这两个函数把返回值改为我们想要的值。</p>
-<p>3.从Log里读取返回结果。</p>
-<p>相关脚本已经整理在本人的github：<a target="_blank" rel="noopener" href="https://github.com/realvegechick/FridaRepository/tree/main/WeChatMiniAppSearcher">https://github.com/realvegechick/FridaRepository/tree/main/WeChatMiniAppSearcher</a></p>
-<p>很可惜返回值里并没有appid，因此要批量下载的话还是需要结合uiautomator进行模拟点击。</p>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
       
     </footer>
   </div>
@@ -496,295 +382,11 @@
   </article>
 
 
-    
-      
 
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/02/16/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E5%AF%B9%E6%94%AF%E4%BB%98%E5%AE%9D%E8%BF%9B%E8%A1%8C%E6%8A%93%E5%8C%85/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="Vec's Blog">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/2023/02/16/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E5%AF%B9%E6%94%AF%E4%BB%98%E5%AE%9D%E8%BF%9B%E8%A1%8C%E6%8A%93%E5%8C%85/" itemprop="url">Frida使用记录——对支付宝进行抓包</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-02-16T17:02:39+00:00">
-                2023-02-16
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h1 id="问题背景"><a href="#问题背景" class="headerlink" title="问题背景"></a>问题背景</h1><p>最近在研究小程序相关的安全问题，需要对各端小程序进行抓包。微信能简单地使用burpsuite捕获，非常方便，但是支付宝却一个包都抓不到，因此在这里做一个记录。</p>
-<h1 id="尝试思路"><a href="#尝试思路" class="headerlink" title="尝试思路"></a>尝试思路</h1><p>首先当然是看看别人怎么做这个问题的。在网上找了一些帖子，解决方案分为两种：</p>
-<ol>
-<li><strong>应用并不连接系统代理，因此可以通过vpn软件（我尝试的是drony）强行让应用的流量走代理。</strong><br>&amp;emsp;这个方法对于一般的应用应该还是挺有效的，但是当我尝试抓支付宝的时候发现，虽然能看到一些包了，但是应用变得很卡，小程序也完全打不开，不知道是vpn的延迟太高被检测了还是支付宝有什么其他的安全措施。</li>
-<li><strong>支付宝使用mtop sdk进行网络通信，修改其中的一些配置令其降级就能抓包。</strong><br>&amp;emsp;hook mtopsdk.mtop.global.SwitchConfig.isGlobalSpdySwitchOpen函数，让它永远返回0。但是帖子是19年的，如今用不了了也只能说毫不意外吧。</li>
-</ol>
-<p>既然现有的方法都派不上用场了，就只能自己看看支付宝的代码是怎么写的了。</p>
-<h1 id="逆向网络SDK"><a href="#逆向网络SDK" class="headerlink" title="逆向网络SDK"></a>逆向网络SDK</h1><p>有一位前辈说过一个非常好的逆向思路：从头尾两个方向开始尝试。那么先hook一下socket看看调用栈，很快就能定位发包相关的逻辑：<br><img src="https://i.imgur.com/upaGAPx.png"><br>返回值就是我们需要的response，因此hook这个地方就能解决抓包的问题。</p>
-<h1 id="编写Frida脚本"><a href="#编写Frida脚本" class="headerlink" title="编写Frida脚本"></a>编写Frida脚本</h1><p>该函数可以调用同一个类下的getOriginRequest()方法获取发送的请求包，并且函数自己的返回值即为返回包。但是还有一点小小的问题：httpResponse的内容只能读取一次，我们自己读掉了应用就读不了了。尝试了各种方法都没能解决，最后只能采取最简单粗暴的方法：发送两次request，一次用来打印，另一次用来返回。反正tcp重传也是很正常的事情，应该没什么影响。<br>具体脚本参见：<a target="_blank" rel="noopener" href="https://github.com/realvegechick/FridaRepository/tree/main/AlipayCapture">https://github.com/realvegechick/FridaRepository/tree/main/AlipayCapture</a><br>一点不足之处就是不能修改response的内容，估计需要重新生成一个response类，怪麻烦的。目前这个脚本已经能够实时显示往来的流量，并且保存在&#x2F;data&#x2F;local&#x2F;tmp&#x2F;pcap&#x2F;raw.txt里面，满足了查看流量的需求。</p>
-<h1 id="参考资料"><a href="#参考资料" class="headerlink" title="参考资料"></a>参考资料</h1><ol>
-<li>socket抓包：<a target="_blank" rel="noopener" href="http://missking.cc/2021/05/04/zhuabao/">http://missking.cc/2021/05/04/zhuabao/</a></li>
-<li>（过时的）支付宝mtop降级脚本：<a target="_blank" rel="noopener" href="https://zhangslob.github.io/2019/11/27/%E6%8A%93%E5%8C%85%EF%BC%9A%E6%B7%98%E5%AE%9D%E3%80%81%E6%94%AF%E4%BB%98%E5%AE%9D/">https://zhangslob.github.io/2019/11/27/%E6%8A%93%E5%8C%85%EF%BC%9A%E6%B7%98%E5%AE%9D%E3%80%81%E6%94%AF%E4%BB%98%E5%AE%9D/</a></li>
-<li>使用vpn强制转发流量：<a target="_blank" rel="noopener" href="https://www.cnblogs.com/lulianqi/p/11380794.html#%E8%AF%81%E4%B9%A6%E6%A0%A1%E9%AA%8C%E5%8E%9F%E7%90%86">https://www.cnblogs.com/lulianqi/p/11380794.html#%E8%AF%81%E4%B9%A6%E6%A0%A1%E9%AA%8C%E5%8E%9F%E7%90%86</a></li>
-</ol>
-
-          
-        
+    <div class="post-spread">
       
     </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
   </div>
-  
-  
-  
-  </article>
-
-
-    
-      
-
-  
-
-  
-  
-  
-
-  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
-  
-  
-  
-  <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/01/31/Android12%E6%97%A0root%E4%BD%BF%E7%94%A8eBPF/">
-
-    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
-      <meta itemprop="name" content="">
-      <meta itemprop="description" content="">
-      <meta itemprop="image" content="/images/avatar.gif">
-    </span>
-
-    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
-      <meta itemprop="name" content="Vec's Blog">
-    </span>
-
-    
-      <header class="post-header">
-
-        
-        
-          <h1 class="post-title" itemprop="name headline">
-                
-                <a class="post-title-link" href="/2023/01/31/Android12%E6%97%A0root%E4%BD%BF%E7%94%A8eBPF/" itemprop="url">Android12无root使用eBPF</a></h1>
-        
-
-        <div class="post-meta">
-          <span class="post-time">
-            
-              <span class="post-meta-item-icon">
-                <i class="fa fa-calendar-o"></i>
-              </span>
-              
-                <span class="post-meta-item-text">发表于</span>
-              
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-01-31T14:37:00+00:00">
-                2023-01-31
-              </time>
-            
-
-            
-
-            
-          </span>
-
-          
-
-          
-            
-          
-
-          
-          
-
-          
-
-          
-
-          
-
-        </div>
-      </header>
-    
-
-    
-    
-    
-    <div class="post-body" itemprop="articleBody">
-
-      
-      
-
-      
-        
-          
-            <h1 id="eBPF介绍"><a href="#eBPF介绍" class="headerlink" title="eBPF介绍"></a>eBPF介绍</h1><p>eBPF（extended Berkeley Packet Filter）是一种内核技术，它允许开发人员在不修改内核代码的情况下运行特定的功能。在出厂版本高于Android12的内核上，谷歌都要求加入eBPF作为安卓内核原生的一部分，因此eBPF具有开销低、无感知等等优点。除了固定的tracepoint之外，还提供kprobe追踪内核指令、uprobe追踪用户态程序，追踪非常灵活全面。<br>想要在安卓上开发自定义的eBPF程序，除了自己写源码手动编译并整合进系统外，也可以选择BCC或者bpftrace这样的现成工具。但是这两个工具都需要系统具有root权限，同时也不利于我们对eBPF的实现有一个较为深入的认识，因此本文将采取手动编译的方式使用eBPF。</p>
-<h1 id="Kernel-side与User-side程序"><a href="#Kernel-side与User-side程序" class="headerlink" title="Kernel-side与User-side程序"></a>Kernel-side与User-side程序</h1><p><img src="https://i.imgur.com/y2yNVd9.png"><br>根据安卓官方的介绍，<code>在 Android 启动期间，系统会加载位于 /system/etc/bpf/ 的所有 eBPF 程序。这些程序是 Android 构建系统根据 C 程序构建而成的二进制对象，并附带了 Android 源代码树中的 Android.bp 文件。构建系统将生成的对象存储在 /system/etc/bpf 中，这些对象将成为系统映像的一部分。</code></p>
-<p>因此，使用eBPF需要分为两步：</p>
-<ol>
-<li>编写内核态的eBPF程序,编译后储存在&#x2F;system&#x2F;etc&#x2F;bpf&#x2F;目录</li>
-<li>编写用户态的eBPF程序，访问bpfmap以读取内核态程序的输出</li>
-</ol>
-<p>具体如何编写网上已经有充足的教程，本文不再赘述，这里推荐一篇我自己参考的文章：<a target="_blank" rel="noopener" href="https://pshocker.github.io/2022/06/18/Android-eBPF%E7%9B%91%E6%8E%A7%E6%89%80%E6%9C%89%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/">https://pshocker.github.io/2022/06/18/Android-eBPF%E7%9B%91%E6%8E%A7%E6%89%80%E6%9C%89%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/</a></p>
-<h1 id="非特权使用eBPF"><a href="#非特权使用eBPF" class="headerlink" title="非特权使用eBPF"></a>非特权使用eBPF</h1><p>内核态程序本身就具有root权限；而用户态程序想要读取bpfmap，就必须具有root权限。接下来是本文的主要内容：<strong>如何在一台不进行root的手机上使用eBPF</strong>。</p>
-<p>最初我进行的尝试是先使用magisk获取临时root，进行必要配置之后还原成没有root的镜像。主要思路是赋予用户态程序的可执行文件suid权限，在运行时将自己变成root，并且也确实能够将自己的euid甚至ruid改为root，但是读取bpfmap时仍提示权限不足。翻阅相关资料之后发现，除了权限之外，安卓系统还有一套capabilities的访问控制机制，其中就包括控制bpfmap读取权限的CAP_BPF。而运行程序时，会将调用者和被调用文件的capabilities做一个与操作，也就是只取两者较低的权限，因此这个方法无法达到我们想要的效果。</p>
-<p>失败之后，决定另辟蹊径，思考如何在非root手机上获取真正的root。在这里我主要受到了magisk获取root权限的方式的启发：与传统linux的su不同，magisk 在开机后会启动一个高权限 root 用户的进程 magiskd，调用 su 会通过 socket 连接到 magiskd，然后在 magiskd 进程中执行命令。那么我们也可以对系统进行类似的修改，启动一个真正的root进程，并与其通信以完成对bpfmap的读取。</p>
-<p>由于我们可以对系统进行修改，获取特权进程并非难事：init.rc中规定了系统启动时会触发的一系列服务，此时使用的权限就是root权限，我们可以将我们的程序注入system&#x2F;core&#x2F;rootdir&#x2F;init.rc：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">#定义service</span><br><span class="line">service myroot /system/bin/myroot.sh</span><br><span class="line">    class main</span><br><span class="line">    # class 包括core main late_start等，可以不设置。默认default</span><br><span class="line">    user root</span><br><span class="line">    # 用户属性，默认root，一般给root即可，权限最大</span><br><span class="line">    group root</span><br><span class="line">    # 所属组，默认root</span><br><span class="line">    disabled</span><br><span class="line">    # disabled 即通过class不能启动，只能start screencap 这种name的方式启动</span><br><span class="line">    oneshot</span><br><span class="line">    # 只运行一次</span><br><span class="line"></span><br><span class="line">#启动条件</span><br><span class="line">on property:sys.boot_completed=1</span><br><span class="line">    start myroot</span><br></pre></td></tr></table></figure>
-<p>这样，系统便会在启动后调用我们存放在&#x2F;system&#x2F;bin&#x2F;myroot.sh的脚本，其内容如下：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line">#!/bin/sh</span><br><span class="line">while true</span><br><span class="line">do</span><br><span class="line">    /system/bin/bpf_cli|nc 0.0.0.0 23334</span><br><span class="line">    sleep 1</span><br><span class="line">done</span><br></pre></td></tr></table></figure>
-<p>这样，该进程便会陷入死循环，等待本地23334端口的连接，执行用户态bpf程序&#x2F;system&#x2F;bin&#x2F;bpf_cli并传出程序的输出。</p>
-<p>配置完成后，我们便可以通过一个普通进程连接23334端口，从而以root权限执行bpf用户态程序，实现在非root的环境里使用eBPF。值得一提的是，要使该进程能够在启用SELinux的环境下执行相应功能，我们还需要对sepolicy进行修改，主要流程大致如下：<br>0. 在system&#x2F;sepolicy&#x2F;private&#x2F;file_contexts里加入对相关文件的记录：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line">/system/bin/myroot.sh      u:object_r:myroot_exec:s0</span><br><span class="line">/system/bin/bpf_cli        u:object_r:myroot_exec:s0</span><br></pre></td></tr></table></figure>
-<p>创建system&#x2F;sepolicy&#x2F;private&#x2F;myroot.te，写入如下内容：</p>
-<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">type myroot, domain, coredomain;</span><br><span class="line">type myroot_exec, exec_type, file_type, system_file_type;</span><br><span class="line"></span><br><span class="line">init_daemon_domain(myroot)</span><br></pre></td></tr></table></figure>
-<p>（注意此处要同时修改system&#x2F;sepolicy&#x2F;prebuilts&#x2F;api&#x2F;32.0&#x2F;private&#x2F;file_contexts和system&#x2F;sepolicy&#x2F;prebuilts&#x2F;api&#x2F;32.0&#x2F;private&#x2F;myroot.te，否则无法通过编译）</p>
-<ol>
-<li>将SELinux设置为permissive</li>
-<li>执行程序，在dmesg里寻找所有相关的avc denied记录</li>
-<li>将记录输入audit2allow，将输出增添至myroot.te</li>
-<li>重复2-3直到不再有新的报错，将将SELinux设置为enforcing</li>
-</ol>
-<h1 id="参考文章"><a href="#参考文章" class="headerlink" title="参考文章"></a>参考文章</h1><ol>
-<li>安卓官方eBPF介绍（<a target="_blank" rel="noopener" href="https://source.android.com/docs/core/architecture/kernel/bpf?hl=zh-cn%EF%BC%89">https://source.android.com/docs/core/architecture/kernel/bpf?hl=zh-cn）</a></li>
-<li>编写并编译eBPF程序（<a target="_blank" rel="noopener" href="https://pshocker.github.io/2022/06/18/Android-eBPF%E7%9B%91%E6%8E%A7%E6%89%80%E6%9C%89%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/%EF%BC%89">https://pshocker.github.io/2022/06/18/Android-eBPF%E7%9B%91%E6%8E%A7%E6%89%80%E6%9C%89%E7%B3%BB%E7%BB%9F%E8%B0%83%E7%94%A8/）</a></li>
-<li>新增具有root权限的开机服务（<a target="_blank" rel="noopener" href="http://www.shibaking.com/blog/2020-03-16-Android8.1%E4%B8%8B%E6%96%B0%E5%A2%9E%E5%BC%80%E6%9C%BA%E6%9C%8D%E5%8A%A1.html%EF%BC%89">http://www.shibaking.com/blog/2020-03-16-Android8.1%E4%B8%8B%E6%96%B0%E5%A2%9E%E5%BC%80%E6%9C%BA%E6%9C%8D%E5%8A%A1.html）</a></li>
-<li>修改sepolicy（<a target="_blank" rel="noopener" href="https://www.codeleading.com/article/90661709951/%EF%BC%89">https://www.codeleading.com/article/90661709951/）</a></li>
-</ol>
-
-          
-        
-      
-    </div>
-    
-    
-    
-
-    
-
-    
-
-    
-
-    <footer class="post-footer">
-      
-
-      
-
-      
-
-      
-      
-        <div class="post-eof"></div>
-      
-    </footer>
-  </div>
-  
-  
-  
-  </article>
-
-
-    
-  </section>
-
-  
 
 
           </div>
@@ -792,6 +394,10 @@
 
 
           
+
+  
+
+
 
         </div>
         
@@ -812,8 +418,17 @@
       
 
       
+        <ul class="sidebar-nav motion-element">
+          <li class="sidebar-nav-toc sidebar-nav-active" data-target="post-toc-wrap">
+            文章目录
+          </li>
+          <li class="sidebar-nav-overview" data-target="site-overview-wrap">
+            站点概览
+          </li>
+        </ul>
+      
 
-      <section class="site-overview-wrap sidebar-panel sidebar-panel-active">
+      <section class="site-overview-wrap sidebar-panel">
         <div class="site-overview">
           <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
             
@@ -855,6 +470,22 @@
         </div>
       </section>
 
+      
+      <!--noindex-->
+        <section class="post-toc-wrap motion-element sidebar-panel sidebar-panel-active">
+          <div class="post-toc">
+
+            
+              
+            
+
+            
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#MANWE%E8%84%B1%E5%A3%B3%E6%9C%BA%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0"><span class="nav-number">1.</span> <span class="nav-text">MANWE脱壳机阅读笔记</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ManweVmpLoader"><span class="nav-number">1.2.</span> <span class="nav-text">ManweVmpLoader</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ManweVmpDex"><span class="nav-number">1.3.</span> <span class="nav-text">ManweVmpDex</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ManweVmpClazz"><span class="nav-number">1.4.</span> <span class="nav-text">ManweVmpClazz</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ManweVmpField"><span class="nav-number">1.5.</span> <span class="nav-text">ManweVmpField</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#ManweVmpMethod"><span class="nav-number">1.6.</span> <span class="nav-text">ManweVmpMethod</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#PoolFixer-amp-RuntimeTypeFixer"><span class="nav-number">1.7.</span> <span class="nav-text">PoolFixer &amp; RuntimeTypeFixer</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#writeClazzes"><span class="nav-number">1.8.</span> <span class="nav-text">writeClazzes</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">1.9.</span> <span class="nav-text">总结</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%8F%82%E8%80%83%E6%96%87%E7%8C%AE"><span class="nav-number">1.10.</span> <span class="nav-text">参考文献</span></a></li></ol></li></ol></div>
+            
+
+          </div>
+        </section>
+      <!--/noindex-->
       
 
       
@@ -988,6 +619,10 @@
   
 
   
+  <script type="text/javascript" src="/js/src/scrollspy.js?v=5.1.4"></script>
+<script type="text/javascript" src="/js/src/post-details.js?v=5.1.4"></script>
+
+
 
   
 
