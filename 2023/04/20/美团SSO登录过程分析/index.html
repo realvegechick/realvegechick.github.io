@@ -79,25 +79,25 @@
 
 
 
-<meta name="description" content="问题背景最近在研究小程序相关的安全问题，需要批量搜索、获取各端小程序。微信小程序之前可以直接使用subsearch的API来获取小程序的信息（虽然cookie有效期有点短）。但是现在新版的微信改用了其他方式，旧版微信也搜索不到小程序了，这个api似乎确凿是关闭了，因此需要另找一个比手动搜索效率更高的方式。 尝试思路第一反应当然是看看换成什么别的API了，但是出乎意料的是，旧版微信上非常容易抓的包在">
+<meta name="description" content="背景最近在研究安卓应用的一键登录功能，发现大部分应用的一键登录功能都需要拉起已登录的app进行验证，而美团却能直接识别出已登录的app，十分神奇，因此对这一过程进行逆向分析。 SSO登录包登录时的数据包如图所示，由于测试次数过多返回包显示need_verify，正常情况下应该是直接登陆成功。对请求包进行测试的结果可以得出，其中主要有三个关键字段：fingerprint、unionid和mtgsig">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Frida使用记录——搜索微信小程序">
-<meta property="og:url" content="http://realvegechick.github.io/2023/03/03/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E6%90%9C%E7%B4%A2%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F/index.html">
+<meta property="og:title" content="美团SSO登录过程分析">
+<meta property="og:url" content="http://realvegechick.github.io/2023/04/20/%E7%BE%8E%E5%9B%A2SSO%E7%99%BB%E5%BD%95%E8%BF%87%E7%A8%8B%E5%88%86%E6%9E%90/index.html">
 <meta property="og:site_name" content="Vec&#39;s Blog">
-<meta property="og:description" content="问题背景最近在研究小程序相关的安全问题，需要批量搜索、获取各端小程序。微信小程序之前可以直接使用subsearch的API来获取小程序的信息（虽然cookie有效期有点短）。但是现在新版的微信改用了其他方式，旧版微信也搜索不到小程序了，这个api似乎确凿是关闭了，因此需要另找一个比手动搜索效率更高的方式。 尝试思路第一反应当然是看看换成什么别的API了，但是出乎意料的是，旧版微信上非常容易抓的包在">
+<meta property="og:description" content="背景最近在研究安卓应用的一键登录功能，发现大部分应用的一键登录功能都需要拉起已登录的app进行验证，而美团却能直接识别出已登录的app，十分神奇，因此对这一过程进行逆向分析。 SSO登录包登录时的数据包如图所示，由于测试次数过多返回包显示need_verify，正常情况下应该是直接登陆成功。对请求包进行测试的结果可以得出，其中主要有三个关键字段：fingerprint、unionid和mtgsig">
 <meta property="og:locale">
-<meta property="og:image" content="https://i.imgur.com/dFw97Yq.png">
-<meta property="og:image" content="https://i.imgur.com/tbj3Q8o.png">
-<meta property="og:image" content="https://i.imgur.com/d9iPfTL.png">
-<meta property="og:image" content="https://i.imgur.com/lSgphD6.png">
-<meta property="og:image" content="https://i.imgur.com/9Wccml1.png">
-<meta property="og:image" content="https://i.imgur.com/23HdloK.png">
-<meta property="og:image" content="https://i.imgur.com/8nUe4HI.png">
-<meta property="article:published_time" content="2023-03-03T15:44:19.000Z">
-<meta property="article:modified_time" content="2023-03-03T07:46:56.228Z">
+<meta property="og:image" content="https://i.imgur.com/RMogUxq.png">
+<meta property="og:image" content="https://i.imgur.com/ywyPMcd.png">
+<meta property="og:image" content="https://i.imgur.com/OPOtnS8.png">
+<meta property="og:image" content="https://i.imgur.com/oroGX2X.png">
+<meta property="og:image" content="https://i.imgur.com/V2bJPnu.png">
+<meta property="og:image" content="https://i.imgur.com/5BTJoYO.png">
+<meta property="og:image" content="https://i.imgur.com/rEaweNt.png">
+<meta property="article:published_time" content="2023-04-20T02:26:11.000Z">
+<meta property="article:modified_time" content="2023-04-20T02:27:24.749Z">
 <meta property="article:author" content="Vec">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:image" content="https://i.imgur.com/dFw97Yq.png">
+<meta name="twitter:image" content="https://i.imgur.com/RMogUxq.png">
 
 
 
@@ -127,13 +127,13 @@
 
 
 
-  <link rel="canonical" href="http://realvegechick.github.io/2023/03/03/Frida使用记录——搜索微信小程序/"/>
+  <link rel="canonical" href="http://realvegechick.github.io/2023/04/20/美团SSO登录过程分析/"/>
 
 
 
 
 
-  <title>Frida使用记录——搜索微信小程序 | Vec's Blog</title>
+  <title>美团SSO登录过程分析 | Vec's Blog</title>
   
 
 
@@ -240,7 +240,7 @@
   
   
   <div class="post-block">
-    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/03/03/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E6%90%9C%E7%B4%A2%E5%BE%AE%E4%BF%A1%E5%B0%8F%E7%A8%8B%E5%BA%8F/">
+    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/04/20/%E7%BE%8E%E5%9B%A2SSO%E7%99%BB%E5%BD%95%E8%BF%87%E7%A8%8B%E5%88%86%E6%9E%90/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
       <meta itemprop="name" content="">
@@ -257,7 +257,7 @@
 
         
         
-          <h1 class="post-title" itemprop="name headline">Frida使用记录——搜索微信小程序</h1>
+          <h1 class="post-title" itemprop="name headline">美团SSO登录过程分析</h1>
         
 
         <div class="post-meta">
@@ -269,8 +269,8 @@
               
                 <span class="post-meta-item-text">发表于</span>
               
-              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-03-03T15:44:19+00:00">
-                2023-03-03
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-04-20T02:26:11+00:00">
+                2023-04-20
               </time>
             
 
@@ -307,16 +307,12 @@
       
 
       
-        <h2 id="问题背景"><a href="#问题背景" class="headerlink" title="问题背景"></a>问题背景</h2><p>最近在研究小程序相关的安全问题，需要批量搜索、获取各端小程序。微信小程序之前可以直接使用subsearch的API来获取小程序的信息（虽然cookie有效期有点短）。但是现在新版的微信改用了其他方式，旧版微信也搜索不到小程序了，这个api似乎确凿是关闭了，因此需要另找一个比手动搜索效率更高的方式。</p>
-<h2 id="尝试思路"><a href="#尝试思路" class="headerlink" title="尝试思路"></a>尝试思路</h2><p>第一反应当然是看看换成什么别的API了，但是出乎意料的是，旧版微信上非常容易抓的包在新版中居然一个都见不到了，尝试了no_sslpinning和vpn转发的方式也没什么效果。约莫又是用了什么神奇的协议。<br>但是好在hooking可以一力破万法，不管什么协议总有个获取明文的地方，接下来就一头扎进代码开始逆向。</p>
-<h2 id="逆向寻找调用点"><a href="#逆向寻找调用点" class="headerlink" title="逆向寻找调用点"></a>逆向寻找调用点</h2><p>进入微信小程序的搜索界面，看看对应的activity：com.tencent.mm.plugin.webview.ui.tools.fts.MMFTSSearchTabWebViewUI<br>很好，看看里面代码长什么样：<br><img src="https://i.imgur.com/dFw97Yq.png"><br>评价为是空空如也。<br>换个思路，试试直接hook socket相关的类：<br><img src="https://i.imgur.com/tbj3Q8o.png"><br>调用栈里可以说是一点线索没给留下。但是不要气馁，在刚刚的初步逆向中可以发现，微信里大量调用了一个MicroMsg开头的log（com.tencent.mm.sdk.platformtools.Log），hook这个类想必能打印出很多信息（实际上有点太多了）。经过漫长的筛选，发现这样一条记录：<br><img src="https://i.imgur.com/d9iPfTL.png"><br>一眼看出这就是客户端获取的查询结果，那么看看调用栈中的com.tencent.mm.plugin.websearch.n$c，这个类应该是n的一个内部类，在处理返回包的时候run函数被安卓生命周期调用，因此调用栈里信息不足。<br>虽然我们直接hook它的构造函数，可以得到更早的调用信息，但是这整个流程都是处理服务器response的回调，继续追踪下去意义不大（血泪教训）。</p>
-<p>既然已经得到了获取返回值的函数，只需要寻找触发这一流程的起点，就可以实现自动化搜索小程序。<br>思路清晰之后，不难想到，我们需要找到这个搜索按钮的onlick函数。这个onClick必定在当前activity里面注册了onClickListener，既然我们看到的activity里面没东西，那么肯定是在父类里注册的。它的父类是com.tencent.mm.plugin.webview.ui.tools.fts.FTSSearchTabWebViewUI：<br><img src="https://i.imgur.com/lSgphD6.png"><br>细细一看也没有什么相关逻辑，只有一个取消的按钮。</p>
-<p>那么再看看父类的父类com.tencent.mm.plugin.webview.ui.tools.fts.FTSBaseWebViewUI：<br><img src="https://i.imgur.com/9Wccml1.png"><br>混淆比较严重，但是没关系，我们用objection直接hook所有函数，看看点击按钮的时候是哪个被触发了。结果来说，直接相关的只有p8，其中一眼就能看到这么一段代码：<br><img src="https://i.imgur.com/23HdloK.png"><br>q3是一个WebSearchView类型的成员，那么毫无疑问，它的FtsEditText就是我们的搜索框。getFtsEditText()返回的类是com.tencent.mm.ui.search.FTSEditTextView，看包名感觉离我们的目标已经很接近了。<br>这个类注册了好几个onClickListener，逐一排查之后，终于找到了我们追寻已久的按钮<br><img src="https://i.imgur.com/8nUe4HI.png"><br>经过测试，直接调用这个onClick函数的效果与我们手动点击是一样的，因此只需要在这里传入我们想搜索的关键字，再在之前找到的log里去取返回结果，我们就能完成小程序的自动化搜索。</p>
-<h2 id="编写Frida脚本"><a href="#编写Frida脚本" class="headerlink" title="编写Frida脚本"></a>编写Frida脚本</h2><p>1.触发onClick，这里需要传一个View当参数，我们用Java.choose找到当前的activity，用findViewById就能拿到这个button。（button的id在之前的逆向里已经通过getId()获取）</p>
-<p>2.传入我们想要的关键字。FTSEditTextView类通过getInEditTextQuery()和getTotalQuery()获取text的文本，hook这两个函数把返回值改为我们想要的值。</p>
-<p>3.从Log里读取返回结果。</p>
-<p>相关脚本已经整理在本人的github：<a target="_blank" rel="noopener" href="https://github.com/realvegechick/FridaRepository/tree/main/WeChatMiniAppSearcher">https://github.com/realvegechick/FridaRepository/tree/main/WeChatMiniAppSearcher</a></p>
-<p>很可惜返回值里并没有appid，因此要批量下载的话还是需要结合uiautomator进行模拟点击。</p>
+        <h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>最近在研究安卓应用的一键登录功能，发现大部分应用的一键登录功能都需要拉起已登录的app进行验证，而美团却能直接识别出已登录的app，十分神奇，因此对这一过程进行逆向分析。</p>
+<h2 id="SSO登录包"><a href="#SSO登录包" class="headerlink" title="SSO登录包"></a>SSO登录包</h2><p><img src="https://i.imgur.com/RMogUxq.png"><br>登录时的数据包如图所示，由于测试次数过多返回包显示need_verify，正常情况下应该是直接登陆成功。对请求包进行测试的结果可以得出，其中主要有三个关键字段：fingerprint、unionid和mtgsig，接下来我们逐一进行分析。</p>
+<h2 id="fingerprint"><a href="#fingerprint" class="headerlink" title="fingerprint"></a>fingerprint</h2><p>该字段主要与com.meituan.android.common.fingerprint.info.FingerprintInfo类有关，其中包括大量设备信息：<br><img src="https://i.imgur.com/ywyPMcd.png"><br>虽然信息项很多，不过app里可以直接调用com.meituan.android.common.fingerprint.FingerprintManager.fingerprint方法一次性采集齐全。</p>
+<h2 id="mtgsig"><a href="#mtgsig" class="headerlink" title="mtgsig"></a>mtgsig</h2><p>该字段是对数据包的签名，在com.meituan.android.common.mtguard.MTGuard.requestSignatureForBabelV4方法中生成，参数为网络请求的url和body：<br><img src="https://i.imgur.com/OPOtnS8.png"><br>继续往下追会发现签名逻辑是在native实现的，遂放弃。但是签名的密钥是写死的，通过这个函数就可以对任意数据包进行签名，因此保护力度相对来说也不是很强。</p>
+<h2 id="unionid"><a href="#unionid" class="headerlink" title="unionid"></a>unionid</h2><p>该字段是对用户身份的鉴别，在所有美团系app中共享。那么未登录的美团是如何知道这个ID的呢？在代码中大量搜索之后终于找到下图的位置：<br><img src="https://i.imgur.com/oroGX2X.png"><br>也就是用deviceInfo向服务器换来的。继续看看其中包含些什么：<br><img src="https://i.imgur.com/V2bJPnu.png"><br>疑似有很多设备信息，但是抓包测试后发现，唯一有用的字段是一个token：<br><img src="https://i.imgur.com/5BTJoYO.png"><br>其中又需要设备的品牌、型号和android_id。这个id在安卓上约等于设备的唯一标识符，只要不刷机就不会改变；同时它在同一签名中的应用中是共享的，所以所有美团系的app都会获得同一个android_id，发往服务器之后，服务器就能识别出该设备上还有其他已登录的美团app，从而返回unionid。</p>
+<h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p><img src="https://i.imgur.com/rEaweNt.png"><br>整个SSO登录的流程如上图所示。可以看出，整个链条的起点是deviceinfo，因此美团SSO本质上是一个设备信任的机制，通过设备id来识别其中已经登录的美团系应用。这一机制的有效性依赖于设备信息的唯一性和可靠性，其安全性值得进一步研究。</p>
 
       
     </div>
@@ -341,8 +337,8 @@
         <div class="post-nav">
           <div class="post-nav-next post-nav-item">
             
-              <a href="/2023/02/16/Frida%E4%BD%BF%E7%94%A8%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94%E5%AF%B9%E6%94%AF%E4%BB%98%E5%AE%9D%E8%BF%9B%E8%A1%8C%E6%8A%93%E5%8C%85/" rel="next" title="Frida使用记录——对支付宝进行抓包">
-                <i class="fa fa-chevron-left"></i> Frida使用记录——对支付宝进行抓包
+              <a href="/2023/04/06/clash+adb%20reverse%E6%8A%93%E5%8C%85/" rel="next" title="clash + adb reverse抓包">
+                <i class="fa fa-chevron-left"></i> clash + adb reverse抓包
               </a>
             
           </div>
@@ -350,10 +346,6 @@
           <span class="post-nav-divider"></span>
 
           <div class="post-nav-prev post-nav-item">
-            
-              <a href="/2023/03/31/MANWE%E8%84%B1%E5%A3%B3%E6%9C%BA%E9%98%85%E8%AF%BB%E7%AC%94%E8%AE%B0/" rel="prev" title="MANWE脱壳机阅读笔记">
-                MANWE脱壳机阅读笔记 <i class="fa fa-chevron-right"></i>
-              </a>
             
           </div>
         </div>
@@ -467,7 +459,7 @@
             
 
             
-              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%97%AE%E9%A2%98%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">问题背景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%B0%9D%E8%AF%95%E6%80%9D%E8%B7%AF"><span class="nav-number">2.</span> <span class="nav-text">尝试思路</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%80%86%E5%90%91%E5%AF%BB%E6%89%BE%E8%B0%83%E7%94%A8%E7%82%B9"><span class="nav-number">3.</span> <span class="nav-text">逆向寻找调用点</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E7%BC%96%E5%86%99Frida%E8%84%9A%E6%9C%AC"><span class="nav-number">4.</span> <span class="nav-text">编写Frida脚本</span></a></li></ol></div>
+              <div class="post-toc-content"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#SSO%E7%99%BB%E5%BD%95%E5%8C%85"><span class="nav-number">2.</span> <span class="nav-text">SSO登录包</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#fingerprint"><span class="nav-number">3.</span> <span class="nav-text">fingerprint</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#mtgsig"><span class="nav-number">4.</span> <span class="nav-text">mtgsig</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#unionid"><span class="nav-number">5.</span> <span class="nav-text">unionid</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%80%BB%E7%BB%93"><span class="nav-number">6.</span> <span class="nav-text">总结</span></a></li></ol></div>
             
 
           </div>
