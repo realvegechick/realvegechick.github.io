@@ -229,6 +229,183 @@
   
   
   <div class="post-block">
+    <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/05/31/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94RSFuzzer-Discovering-Deep-SMI-Handler-Vulnerabilities-in-UEFI-Firmware-with-Hybrid-Fuzzing/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="name" content="">
+      <meta itemprop="description" content="">
+      <meta itemprop="image" content="/images/avatar.gif">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="Vec's Blog">
+    </span>
+
+    
+      <header class="post-header">
+
+        
+        
+          <h1 class="post-title" itemprop="name headline">
+                
+                <a class="post-title-link" href="/2023/05/31/%E8%AE%BA%E6%96%87%E9%98%85%E8%AF%BB%E8%AE%B0%E5%BD%95%E2%80%94%E2%80%94RSFuzzer-Discovering-Deep-SMI-Handler-Vulnerabilities-in-UEFI-Firmware-with-Hybrid-Fuzzing/" itemprop="url">论文阅读记录——RSFuzzer: Discovering Deep SMI Handler Vulnerabilities in UEFI Firmware with Hybrid Fuzzing</a></h1>
+        
+
+        <div class="post-meta">
+          <span class="post-time">
+            
+              <span class="post-meta-item-icon">
+                <i class="fa fa-calendar-o"></i>
+              </span>
+              
+                <span class="post-meta-item-text">发表于</span>
+              
+              <time title="创建于" itemprop="dateCreated datePublished" datetime="2023-05-31T14:11:36+00:00">
+                2023-05-31
+              </time>
+            
+
+            
+
+            
+          </span>
+
+          
+
+          
+            
+          
+
+          
+          
+
+          
+
+          
+
+          
+
+        </div>
+      </header>
+    
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+      
+
+      
+        
+          
+            <p>原文链接： <a target="_blank" rel="noopener" href="https://www.computer.org/csdl/proceedings-article/sp/2023/933600b765/1Js0Ek1SE6c">https://www.computer.org/csdl/proceedings-article/sp/2023/933600b765/1Js0Ek1SE6c</a></p>
+<h2 id="Background"><a href="#Background" class="headerlink" title="Background"></a>Background</h2><p>SMM是一种面向x86处理器的，由Unified Extensible Firmware Interface (UEFI）固件提供的安全操作模式，在SMM模式下运行的程序就是SMM driver，功能包括电量管理，访问敏感数据以及控制系统硬件等。<br>在系统启动的时候，这些driver被加载到一块单独的内存空间，称为SMRAM，并且在启动后这块SMRAM就被锁定。<br>另外值得一提的是，SMM driver的权限为-2，而我们知道kernel的权限一般是0，因此SMM driver可以通过物理地址访问所有的内存空间。对SMM driver进行fuzzing也是建立在0级权限之上的，也就是基于0级权限的威胁模型。</p>
+<p>这些driver通常包含3个部分：<br>    1. 一套vendor提供的协议，用于与其他driver通信<br>    2. 一组SMI handlers，每个代表一项运行时的服务，通过CommBuffer与kernel交换数据<br>    3. 初始化函数，用来注册上述协议和handler，将它们存放至SMRAM</p>
+<p>其中，SMI handler既是SMM driver的入口，也是与kernel交换数据的唯一接口。因此，对SMM drivr进行fuzzing的理想目标就是SMI handler。</p>
+<h2 id="Running-Example"><a href="#Running-Example" class="headerlink" title="Running Example"></a>Running Example</h2><p><img src="https://hackmd.io/_uploads/S1pOTvNI3.png"></p>
+<p>第18行将buffer指向的位置改为0，而buffer在第12行可以由输入数据控制，第16行的签名又可以由第7行控制。<br>可以看出，一个漏洞的触发涉及多个不同输入格式的handler，是一个较为复杂的过程。</p>
+<h2 id="Challenges"><a href="#Challenges" class="headerlink" title="Challenges"></a>Challenges</h2><ol>
+<li>SMI handler存在不同的输入接口</li>
+<li>SMI handler的输入需要满足不同的格式</li>
+<li>触发漏洞可能需要多个handler共同参与</li>
+<li>漏洞可能被路径约束保护</li>
+<li>漏洞可能仅为静默的内存污染，并不导致crash</li>
+</ol>
+<h2 id="Insights"><a href="#Insights" class="headerlink" title="Insights"></a>Insights</h2><p>为了解决以上5个挑战，本文提出以下insights：</p>
+<ol>
+<li>为了生成有价值的测试用例，需要知道输入相关的知识，包括输入接口和输入的数据格式</li>
+<li>为了有效地测试SMI handler， 需要跨handler相关的知识，包括handler之间的producer-consumer关系和涉及的跨handler变量</li>
+<li>为了提高代码覆盖率，需要解决路径约束</li>
+<li>为了找出更多内存相关的漏洞，需要检测静默的内存破坏</li>
+</ol>
+<h2 id="Contribution"><a href="#Contribution" class="headerlink" title="Contribution"></a>Contribution</h2><p>本文贡献如下：</p>
+<ol>
+<li>提出了一个灰盒测试工具，能够识别SMI handler的输入接口，恢复输入格式并进行多个handler的fuzzing</li>
+<li>实现了RSFuzzer，评价了16个UEFI的固件，并且表现得比state-of-the-art的工具都好</li>
+<li>检测了65个新漏洞，33个得到开发商确认，获得14个CVE</li>
+<li>计划开源RSFuzzer</li>
+</ol>
+<h2 id="Overview"><a href="#Overview" class="headerlink" title="Overview"></a>Overview</h2><p><img src="https://hackmd.io/_uploads/SyLHRDELn.png"><br>在执行单handler的fuzzing的时候，RSFuzzer通过concolic execution提取输入知识（符号化输入相关的变量，实例化其他变量）同时也会收集对其他SMI handler的调用，识别用于其他handler的变量，从而更好地进行跨handler的fuzzing。</p>
+<p>当一定时间内没有触发新的block的时候，RSFuzzer切换为跨handler模式，选择一个跨handler变量，根据依赖生成一系列SMI handler调用进行fuzzing。触发新的block之后，再切换回单handler模式继续fuzz。</p>
+<h2 id="Design"><a href="#Design" class="headerlink" title="Design"></a>Design</h2><p>RSFuzzer的设计主要包含以下四个部分：</p>
+<h3 id="Input-Knowledge-Extraction"><a href="#Input-Knowledge-Extraction" class="headerlink" title="Input Knowledge Extraction"></a>Input Knowledge Extraction</h3><p>输入知识包括输入接口和输入格式。</p>
+<p>输入接口：CommBuffer总是第三个参数，因此不需要识别实际的内存地址；硬编码的地址通过递归式的方法进行识别。</p>
+<p>输入格式在解引用操作使用过的变量识别为指针，其他的通过递归的方式识别基本类型（只需要大小）；<br>识别struct的结构基于两点观察：<br>    1.指向struct的指针通常式通过间接地址访问的；<br>    2.上级结构总是包含指向下级结构的指针<br>也是提出了一种递归式的算法识别整个struct。<br><img src="https://hackmd.io/_uploads/HykpRv4I2.png"></p>
+<h3 id="Test-Case-Generation"><a href="#Test-Case-Generation" class="headerlink" title="Test Case Generation"></a>Test Case Generation</h3><p>生成测试用例主要根据三种模式：<br>1.基于格式的：每当取得新的输入格式相关的知识，RSFuzzer就会按照对应的格式分配内存，填充随机数据并生成一个新的test case种子<br>2.基于约束的：如果约束求解长时间无法解出，RSFuzzer会变异与未触发的分支相关的变量，变异为与分支条件相同或是略大、略小的值。<br>3.基于污点的：由于SMI handler拥有-2级权限，对内存的污染很可能不会触发crash。RSFuzzer在fuzz之前分配一块不可读不可写不可执行作为Red Zone，之后在concolic execution中标记所有用户可控的内存指令为危险指令，最后在fuzzing的时候通过变异潜在的危险指令使其指向red zone，从而触发crash</p>
+<h3 id="Cross-handler-Knowledge-Extraction"><a href="#Cross-handler-Knowledge-Extraction" class="headerlink" title="Cross-handler Knowledge Extraction"></a>Cross-handler Knowledge Extraction</h3><p>本文关注的跨handler知识主要包括跨handler的变量及代码片段。其中代码片段具有如下特征：<br>1.总是访问相同的内存空间<br>2.至少一个代码片段对其进行写操作<br>3.该变量生存周期涵盖多个handler的执行<br>而这些片段涉及的变量即为跨handler变量。</p>
+<h2 id="Evaluation"><a href="#Evaluation" class="headerlink" title="Evaluation"></a>Evaluation</h2><p>RSFuzzer基于AFL++实现，在16个UEFI固件镜像中进行测试，得到如下结果：</p>
+<h3 id="Vulnerabilities"><a href="#Vulnerabilities" class="headerlink" title="Vulnerabilities"></a>Vulnerabilities</h3><p><img src="https://hackmd.io/_uploads/Bkx7gO4Ih.png"><br>RSFuzzer找出65个漏洞，包括六种类型：</p>
+<ol>
+<li>Improper input validation</li>
+<li>Out-of-bound write</li>
+<li>Buffer overflows</li>
+<li>Use of uninitialized variables</li>
+<li>Untrusted pointer dereference</li>
+<li>Use after free</li>
+</ol>
+<h3 id="Coverage"><a href="#Coverage" class="headerlink" title="Coverage"></a>Coverage</h3><p><img src="https://hackmd.io/_uploads/r1OigdEU2.png"></p>
+<p>与sota工作（Syzgen和SPENDER）相比，RSFuzzer的代码覆盖率提升到了617%，另外漏洞发现率也提高到了828%。</p>
+<h3 id="Effectiveness-of-Knowledge-Extraction"><a href="#Effectiveness-of-Knowledge-Extraction" class="headerlink" title="Effectiveness of Knowledge Extraction"></a>Effectiveness of Knowledge Extraction</h3><p>为了证明知识提取的效果，作者去除Knowledge Extraction模块，使用随机变异的字节填充输入，得到如下结果：<br><img src="https://hackmd.io/_uploads/S1pMbOVU2.png"><br>可以看出Knowledge Extraction在fuzzing中发挥了重要作用。</p>
+<h2 id="Discussion"><a href="#Discussion" class="headerlink" title="Discussion"></a>Discussion</h2><h3 id="Limitation"><a href="#Limitation" class="headerlink" title="Limitation"></a>Limitation</h3><p>本文主要存在如下局限性：</p>
+<ol>
+<li>虽然用的是partial emulation，开销还是很大</li>
+<li>官网上仅提供是待升级的固件镜像，可能有所疏漏</li>
+</ol>
+<h3 id="Further-Research"><a href="#Further-Research" class="headerlink" title="Further Research"></a>Further Research</h3><p>另外有两类bug不能被RSFuzzer检测，需要进一步的工作：</p>
+<ol>
+<li>Information leak</li>
+<li>Inproper access control</li>
+</ol>
+
+          
+        
+      
+    </div>
+    
+    
+    
+
+    
+
+    
+
+    
+
+    <footer class="post-footer">
+      
+
+      
+
+      
+
+      
+      
+        <div class="post-eof"></div>
+      
+    </footer>
+  </div>
+  
+  
+  
+  </article>
+
+
+    
+      
+
+  
+
+  
+  
+  
+
+  <article class="post post-type-normal" itemscope itemtype="http://schema.org/Article">
+  
+  
+  
+  <div class="post-block">
     <link itemprop="mainEntityOfPage" href="http://realvegechick.github.io/2023/04/25/%E8%85%BE%E8%AE%AF%E7%B3%BB%E6%89%AB%E7%A0%81%E5%B4%A9%E6%BA%83%E6%BC%8F%E6%B4%9E/">
 
     <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
@@ -1086,7 +1263,7 @@
               
                 <a href="/archives/%7C%7C%20archive">
               
-                  <span class="site-state-item-count">6</span>
+                  <span class="site-state-item-count">7</span>
                   <span class="site-state-item-name">日志</span>
                 </a>
               </div>
