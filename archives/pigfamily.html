@@ -37,34 +37,43 @@
     }
 
     .notice {
-      background: #fff8d2;
-      border: 4px dotted #ff69b4;
-      padding: 30px;
-      margin: 30px auto;
-      border-radius: 20px;
-      font-size: 19px;
-      line-height: 1.8;
-      text-align: left;
-      max-width: 800px;
-      box-shadow: 0 0 12px rgba(255,105,180,0.4);
+      background: linear-gradient(145deg, #fff8e1, #fff0f5);
+      border: 6px solid gold;
+      padding: 40px;
+      margin: 40px auto;
+      border-radius: 24px;
+      font-size: 20px;
+      line-height: 2;
+      text-align: justify;
+      max-width: 880px;
+      box-shadow: 0 0 30px rgba(255, 215, 0, 0.4), 0 0 12px rgba(255,105,180,0.6);
       position: relative;
+      background-image: url('https://www.transparenttextures.com/patterns/paper-fibers.png');
+      background-blend-mode: lighten;
+    }
+    .notice p {
+      text-indent: 2em;
     }
 
-    .notice::before {
-      content: "📜";
-      font-size: 36px;
+    .notice::after {
+      content: "🐷";
+      font-size: 40px;
       position: absolute;
-      top: -20px;
-      left: -20px;
-      transform: rotate(-10deg);
+      bottom: -20px;
+      right: -20px;
+      transform: rotate(15deg);
+      opacity: 0.8;
     }
 
     .signature {
-      margin-top: 25px;
+      margin-top: 30px;
       font-style: italic;
       font-size: 16px;
-      color: #888;
+      color: #999;
+      text-align: right;
+      font-family: '楷体', serif;
     }
+
 
     .image-placeholder {
       width: 80%;
@@ -87,6 +96,27 @@
       color: #999;
     }
 
+    .bgm-inline {
+      margin-top: 0px;
+      text-align: center;
+    }
+
+    .bgm-inline button {
+      background: linear-gradient(to right, #ff69b4, #ffa07a);
+      color: white;
+      border: none;
+      padding: 6px 14px;
+      font-size: 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 3px 3px 4px rgba(0,0,0,0.2);
+      transition: all 0.3s ease-in-out;
+    }
+
+    .bgm-inline button:hover {
+      background: linear-gradient(to right, #c71585, #ff1493);
+      transform: scale(1.2);
+    }
     button {
       background: linear-gradient(to right, #ff1493, #ff69b4);
       color: white;
@@ -116,27 +146,28 @@
     🎊 热烈庆祝族长麦小歪本科毕业！ 🎊<br>
   </div>
 
-  
-    <div class="section">
-    <button onclick="document.getElementById('bgm').play()">
-        🎶 点击播放庆典BGM
-    </button>
-    <audio id="bgm" loop src="
-https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview122/v4/ed/83/1b/ed831bc2-a427-79f6-8402-0de8539cd900/mzaf_3397698820256344137.plus.aac.p.m4a"></audio>
-    </div>
-
   <div class="section">
     <div class="notice">
-        【官方通告】<br><br>
-        猪猪家族猪务院隆重宣布：<br><br>
-        在全体族员的共同关注与深情祝福下，伟大族长麦小歪同志，已于近日顺利完成学业，正式实现本科毕业的重要人生里程碑！这不仅是族长个人成长的重要跃迁，更是我猪猪家族发展历程中的又一光辉时刻。<br><br>
-        回首族长学业奋进的日日夜夜，猪猪家族CTO兼特级苦力黄摸摸同志始终并肩作战、风雨同舟。从选题探讨到精神鼓励，黄摸摸同志无怨无悔地承担起一切脏活儿杂活儿，堪称家族学术后勤保障第一人。<br><br>
-        为表彰麦小歪同志学成归来之重大喜讯，及黄摸摸同志在此过程中的杰出贡献，经猪务院研究决定：<br><br>
-        一、授予麦小歪同志“猪猪家族荣誉学士”称号；<br>
-        二、特别嘉奖黄摸摸同志“最佳伴读”勋章一枚；<br>
-        三、全族今晚额外加餐，加以庆贺！<br><br>
-        全体族员继续紧密团结在麦小歪族长周围，为猪猪家族更加光辉灿烂的未来贡献智慧与脂肪！<br><br>
-        特此通报。
+        <div class="bgm-inline">
+          <button onclick="document.getElementById('bgm').play()">
+            🎶 播放庆典BGM
+          </button>
+          <audio id="bgm" loop src="https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview122/v4/ed/83/1b/ed831bc2-a427-79f6-8402-0de8539cd900/mzaf_3397698820256344137.plus.aac.p.m4a"></audio>
+        </div>
+        <p>猪猪家族猪务院隆重宣布：</p>
+        <p>在全体族员的共同关注与深情祝福下，伟大族长麦小歪同志，已于近日顺利完成学业，正式实现本科毕业的重要人生里程碑！这不仅是族长个人成长的重要跃迁，更是我猪猪家族发展历程中的又一光辉时刻。</p>
+        <p>回首族长学业奋进的日日夜夜，猪猪家族CTO兼特级苦力黄摸摸同志始终并肩作战、风雨同舟。从课题探讨到精神鼓励，黄摸摸同志无怨无悔地承担起一切脏活儿杂活儿，堪称猪猪家族学术后勤保障第一人。</p>
+        <p>为表彰麦小歪同志学成归来之重大喜讯，及黄摸摸同志在此过程中的杰出贡献，经猪务院研究决定：</p>
+        <p>一、授予麦小歪同志“猪猪家族荣誉学士”称号；</p>
+        <p>二、特别嘉奖黄摸摸同志“最佳伴读”勋章一枚；</p>
+        <p>三、全族今晚额外加餐，加以庆贺！</p>
+        <p>全体族员继续紧密团结在麦小歪族长周围，为猪猪家族更加光辉灿烂的未来贡献智慧与脂肪！</p>
+        <p>特此通报。</p>
+        <div class="bgm-inline">
+          <button onclick="alert('🐷您已成功领取1份加餐券，请前往猪猪家族富裕部进行兑换！')">
+            🎁 点击领取族长特批福利
+          </button>
+        </div>
     </div>
 
     <div class="signature">
@@ -145,11 +176,7 @@ https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview122/v4/ed/83/1b/ed8
     </div>
   </div>
 
-  <div class="section">
-    <button onclick="alert('🐷您已成功领取1份加餐券，请前往猪猪家族富裕部进行兑换！')">
-      🎁 点击领取族长特批福利
-    </button>
-  </div>
+  
 
 </body>
 </html>
