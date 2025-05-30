@@ -17,19 +17,23 @@
     .banner {
       background: linear-gradient(to right, #ff0033, #ff6600);
       color: gold;
-      font-size: 30px;
+      font-size: 20px;
       font-weight: bold;
       padding: 35px 20px;
       line-height: 1.6;
       box-shadow: 0 6px 15px rgba(0,0,0,0.4);
       text-shadow: 2px 2px #660000;
-      animation: flashText 1.5s infinite alternate;
       border-bottom: 5px double gold;
+    }
+
+    .banner-text {
+      display: inline-block;
+      animation: flashText 1s infinite alternate;
     }
 
     @keyframes flashText {
       0% { opacity: 1; transform: scale(1); }
-      100% { opacity: 0.85; transform: scale(1.02); }
+      100% { opacity: 0.85; transform: scale(1.2); }
     }
 
     .section {
@@ -143,7 +147,7 @@
 <body>
 
   <div class="banner">
-    🎊 热烈庆祝族长麦小歪本科毕业！ 🎊<br>
+    <span class="banner-text">🎊 热烈庆祝族长麦小歪本科毕业！ 🎊</span><br>
   </div>
 
   <div class="section">
