@@ -147,7 +147,7 @@
     function handleRewardClick() {
       rewardClicked++;
       if (rewardClicked === 1) {
-        alert('🎁您已成功领取1份加餐券，请前往猪猪家族富裕部登记兑换！切勿重复申领，文明用餐，从每一头🐷做起！');
+        alert('🎁您已成功领取1份加餐券，请前往猪猪家族富裕部登记兑换！\n切勿重复申领，文明用餐，从每一头🐷做起！');
       } else {
         alert('⚠️监测到非法重复领取！\n您的设备编号与坐标信息已同步至中央猪务档案库，请立即前往猪猪家族友爱部主动说明情况，争取宽大处理！');
         const btn = document.getElementById('reward-btn');
@@ -160,8 +160,9 @@
 
         // 触发设备震动（如支持）
         if (navigator.vibrate) {
-          navigator.vibrate([200, 100, 200]);
-        }
+          navigator.vibrate([
+          300, 100, 300, 100, 300, 100, 300, 100, 300  // 总计 3 秒
+        ]);
       }
     }
   </script>
