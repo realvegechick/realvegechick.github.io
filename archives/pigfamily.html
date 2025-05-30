@@ -2,89 +2,120 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>🎉 喜迎纪念日！</title>
-  <link rel="stylesheet" href="style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>猪猪家族官方发布</title>
   <style>
     body {
       margin: 0;
-      font-family: "Arial", sans-serif;
-      background: #fff8f0;
+      font-family: "微软雅黑", sans-serif;
+      background: #fff0e5;
       color: #333;
       text-align: center;
     }
 
     .banner {
-      background: red;
-      color: yellow;
-      padding: 30px 15px;
-      font-size: 24px;
+      background: #d70000;
+      color: gold;
+      font-size: 26px;
       font-weight: bold;
-      line-height: 1.5;
+      padding: 30px 15px;
+      line-height: 1.6;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+      text-shadow: 1px 1px #000;
     }
 
     .section {
-      padding: 20px 15px;
+      padding: 20px;
     }
 
-    .section img {
-      max-width: 100%;
+    .notice {
+      background: #fff8d2;
+      border: 2px dashed #ff6961;
+      padding: 20px;
+      margin: 20px;
       border-radius: 12px;
-      margin-bottom: 10px;
+      font-size: 18px;
+      line-height: 1.7;
+      text-align: left; /* 加上这一行 */
     }
 
-    .love-words {
-      background: #ffe7e0;
-      padding: 15px;
-      margin: 10px;
-      border-radius: 10px;
-      font-size: 18px;
+    .signature {
+      margin-top: 20px;
+      font-style: italic;
+      font-size: 16px;
+      color: #666;
+    }
+
+    .image-placeholder {
+      width: 80%;
+      height: 200px;
+      background: #ddd;
+      margin: 20px auto;
+      border: 3px dashed #ff4d4d;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #555;
+    }
+
+    .audio-placeholder {
+      margin: 30px auto;
+      font-size: 14px;
+      color: #888;
     }
 
     button {
-      background: #ff4d4d;
+      background: #ff1493;
       color: white;
       border: none;
       padding: 15px 25px;
       font-size: 18px;
-      border-radius: 10px;
+      border-radius: 8px;
       margin-top: 20px;
+      box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
     }
 
-    audio {
-      margin-top: 20px;
-      width: 90%;
+    button:hover {
+      background: #c71585;
     }
   </style>
 </head>
 <body>
 
   <div class="banner">
-    🎉 热烈庆祝我们一周年纪念 🎉<br>
-    （我家笨蛋坚持赖在我身边整整1024天啦）
+    🎊 热烈庆祝黄摸摸加入猪猪家族1024天！ 🎊<br>
   </div>
 
-  <div class="section">
-    <img src="images/us1.jpg" alt="我们的大头贴">
-    <p>这是你用晚饭换来的合照，真的值！📷</p>
-  </div>
-
-  <div class="section love-words">
-    你是我见一个爱一个里，最久的那个。<br>
-    <small>—— 你的傻瓜男朋友</small>
-  </div>
-
-  <div class="section">
-    <button onclick="alert('你中奖了！奖品是我一辈子的真心💖')">
-      点我抽奖 🎁
+  
+    <div class="section">
+    <button onclick="document.getElementById('bgm').play()">
+        🎶 点击播放庆典BGM
     </button>
+    <audio id="bgm" src="https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview112/v4/72/99/26/729926b5-1313-fa80-7f13-f5a4d0ed814b/mzaf_5440203252261968446.plus.aac.p.m4a"></audio>
+    </div>
+
+  <div class="section">
+    <div class="notice">
+        【官方通告】<br><br>
+        猪猪家族猪务院庄重宣布：<br><br>
+        自本家族正式建族以来，在伟大族长麦小歪同志的英明领导下，全体族员不忘初心、砥砺奋进。值此特殊之日，我们迎来了一个意义非凡的历史时刻——核心成员黄摸摸同志正式加入家族满1024天。<br><br>
+        黄摸摸同志自加入以来，勤勤恳恳，任劳任怨，勇担技术重任，甘为体力先锋，多次圆满完成族长交付的各类高难度任务，为家族建设作出了卓越贡献。<br><br>
+        为表彰其突出表现，经族长麦小歪亲自批示，特授予其“猪猪家族首席CTO兼特级苦力”荣誉称号。<br><br>
+        同时，为纪念族长与黄摸摸同志携手走过的1024天非凡征程，现号召全族欢庆，今晚统一加餐，感恩每一头见证与参与家族成长的猪猪。<br><br>
+        特此通报。
+    </div>
+
+    <div class="signature">
+      猪闻社发布<br>
+      日期：2025年6月20日
+    </div>
   </div>
 
   <div class="section">
-    <audio controls autoplay loop>
-      <source src="audio/our_song.mp3" type="audio/mpeg">
-      你的浏览器不支持音频播放
-    </audio>
+    <button onclick="alert('🐷您已成功领取1份加餐券，请前往猪猪家族富裕部进行兑换！')">
+      🎁 点击领取族长特批福利
+    </button>
   </div>
 
 </body>
