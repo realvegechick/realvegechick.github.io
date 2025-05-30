@@ -37,7 +37,21 @@
       0% { opacity: 1; transform: scale(1); }
       100% { opacity: 0.85; transform: scale(1.1); }
     }
+    @keyframes alarmFlash {
+      0%   { background-color: #000; color: red; }
+      50%  { background-color: #8b0000; color: #fff; }
+      100% { background-color: #000; color: red; }
+    }
 
+    button.punished {
+      animation: alarmFlash 0.8s infinite;
+      font-size: clamp(20px, 3.5vw, 32px);
+      cursor: not-allowed;
+      box-shadow: none;
+      border-color: darkred;
+      font-weight: bold;
+      background: black !important;   /* 彻底覆盖渐变 */
+    }
     .section {
       padding: 15px 10px;
     }
@@ -127,6 +141,30 @@
       max-width: 300px;
     }
   </style>
+  <script>
+    let rewardClicked = 0;
+
+    function handleRewardClick() {
+      rewardClicked++;
+      if (rewardClicked === 1) {
+        alert('🎁您已成功领取1份加餐券，请前往猪猪家族富裕部登记兑换！切勿重复申领，文明用餐，从每一头🐷做起！');
+      } else {
+        alert('⚠️监测到非法重复领取！\n您的设备编号与坐标信息已同步至中央猪务档案库，请立即前往猪猪家族友爱部主动说明情况，争取宽大处理！');
+        const btn = document.getElementById('reward-btn');
+        // 禁用按钮
+        // 强制 reflow：触发 DOM 读取，确保动画重新计算
+        void btn.offsetWidth;
+        btn.disabled = true;
+        btn.innerText = '⚠️ 猪格勃已锁定您的设备！';
+        btn.classList.add('punished');
+
+        // 触发设备震动（如支持）
+        if (navigator.vibrate) {
+          navigator.vibrate([200, 100, 200]);
+        }
+      }
+    }
+  </script>
 </head>
 <body>
 
@@ -152,7 +190,7 @@
         <p>全体族员继续紧密团结在麦小歪族长周围，为猪猪家族更加光辉灿烂的未来贡献智慧与脂肪！</p>
         <p>特此通报。</p>
         <div class="bgm-inline">
-          <button onclick="alert('🐷您已成功领取1份加餐券，请前往猪猪家族富裕部进行兑换！')">
+          <button id="reward-btn" onclick="handleRewardClick()">
             🎁 点击领取族长特批福利
           </button>
         </div>
