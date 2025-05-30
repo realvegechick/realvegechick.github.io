@@ -8,76 +8,105 @@
     body {
       margin: 0;
       font-family: "微软雅黑", sans-serif;
-      background: #fff0e5;
+      background: linear-gradient(135deg, #fff0e5, #ffe4f0);
       color: #333;
       text-align: center;
+      overflow-x: hidden;
     }
 
     .banner {
-      background: #d70000;
+      background: linear-gradient(to right, #ff0033, #ff6600);
       color: gold;
-      font-size: 26px;
+      font-size: 30px;
       font-weight: bold;
-      padding: 30px 15px;
+      padding: 35px 20px;
       line-height: 1.6;
-      box-shadow: 0 4px 8px rgba(0,0,0,0.3);
-      text-shadow: 1px 1px #000;
+      box-shadow: 0 6px 15px rgba(0,0,0,0.4);
+      text-shadow: 2px 2px #660000;
+      animation: flashText 1.5s infinite alternate;
+      border-bottom: 5px double gold;
+    }
+
+    @keyframes flashText {
+      0% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0.85; transform: scale(1.02); }
     }
 
     .section {
-      padding: 20px;
+      padding: 25px 15px;
     }
 
     .notice {
       background: #fff8d2;
-      border: 2px dashed #ff6961;
-      padding: 20px;
-      margin: 20px;
-      border-radius: 12px;
-      font-size: 18px;
-      line-height: 1.7;
-      text-align: left; /* 加上这一行 */
+      border: 4px dotted #ff69b4;
+      padding: 30px;
+      margin: 30px auto;
+      border-radius: 20px;
+      font-size: 19px;
+      line-height: 1.8;
+      text-align: left;
+      max-width: 800px;
+      box-shadow: 0 0 12px rgba(255,105,180,0.4);
+      position: relative;
+    }
+
+    .notice::before {
+      content: "📜";
+      font-size: 36px;
+      position: absolute;
+      top: -20px;
+      left: -20px;
+      transform: rotate(-10deg);
     }
 
     .signature {
-      margin-top: 20px;
+      margin-top: 25px;
       font-style: italic;
       font-size: 16px;
-      color: #666;
+      color: #888;
     }
 
     .image-placeholder {
       width: 80%;
       height: 200px;
-      background: #ddd;
+      background: repeating-linear-gradient(45deg, #ffe6e6, #ffe6e6 10px, #ffb6c1 10px, #ffb6c1 20px);
       margin: 20px auto;
-      border: 3px dashed #ff4d4d;
-      border-radius: 12px;
+      border: 4px dashed #ff4d4d;
+      border-radius: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #555;
+      font-weight: bold;
+      font-size: 18px;
     }
 
     .audio-placeholder {
       margin: 30px auto;
       font-size: 14px;
-      color: #888;
+      color: #999;
     }
 
     button {
-      background: #ff1493;
+      background: linear-gradient(to right, #ff1493, #ff69b4);
       color: white;
-      border: none;
-      padding: 15px 25px;
+      border: 2px solid #ff69b4;
+      padding: 15px 30px;
       font-size: 18px;
-      border-radius: 8px;
+      border-radius: 12px;
       margin-top: 20px;
-      box-shadow: 2px 2px 5px rgba(0,0,0,0.2);
+      cursor: pointer;
+      box-shadow: 3px 3px 8px rgba(0,0,0,0.25);
+      transition: all 0.3s ease-in-out;
     }
 
     button:hover {
-      background: #c71585;
+      background: linear-gradient(to right, #c71585, #ff1493);
+      transform: scale(1.05);
+    }
+
+    audio {
+      margin-top: 15px;
     }
   </style>
 </head>
@@ -101,7 +130,7 @@ https://audio-ssl.itunes.apple.com/itunes-assets/AudioPreview122/v4/ed/83/1b/ed8
         【官方通告】<br><br>
         猪猪家族猪务院隆重宣布：<br><br>
         在全体族员的共同关注与深情祝福下，伟大族长麦小歪同志，已于近日顺利完成学业，正式实现本科毕业的重要人生里程碑！这不仅是族长个人成长的重要跃迁，更是我猪猪家族发展历程中的又一光辉时刻。<br><br>
-        回首族长学业奋进的日日夜夜，猪猪家族CTO兼特级苦力黄摸摸同志始终并肩作战、风雨同舟。从选题探讨到精神鼓励，黄摸摸同志无怨无悔地承担起一切脏活儿杂活儿，堪称家族学术后勤保障第一人。族长曾多次感慨：“若无黄摸摸，怎有我今日！”<br><br>
+        回首族长学业奋进的日日夜夜，猪猪家族CTO兼特级苦力黄摸摸同志始终并肩作战、风雨同舟。从选题探讨到精神鼓励，黄摸摸同志无怨无悔地承担起一切脏活儿杂活儿，堪称家族学术后勤保障第一人。<br><br>
         为表彰麦小歪同志学成归来之重大喜讯，及黄摸摸同志在此过程中的杰出贡献，经猪务院研究决定：<br><br>
         一、授予麦小歪同志“猪猪家族荣誉学士”称号；<br>
         二、特别嘉奖黄摸摸同志“最佳伴读”勋章一枚；<br>
