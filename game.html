@@ -427,6 +427,12 @@ const player = {
   uniqueSlots: [], // FIFO: 商店中等待购买的独特道具 (最多 3 个, 满则顶替最早)
   bigForm: false,
   cyclops: false, cyclopsAtkMul: 1,
+  // 独眼激光: laserChargeT 蓄力计时, laserTickT 距上次伤害脉冲时间, laserPath 当前路径 (折线), laserFlashT 闪光残留
+  laserChargeT: 0, laserTickT: 0, laserPath: null, laserFlashT: 0,
+  // 绝对领域: 半径 = baseMagnetRange (不随贪婪扩大). fieldTickT 距上次伤害脉冲的时间
+  absoluteField: false, fieldTickT: 0,
+  // 寻的导弹: 固定间隔发射追踪导弹, 命中爆炸
+  missileLauncher: false, missileT: 0,
   voidForm: false, voidT: 0,
   deepCrit: false, devilPower: false,
 };
@@ -661,6 +667,9 @@ function rollInitialStats() {
   player.uniqueSlots = [];
   player.bigForm = false;
   player.cyclops = false; player.cyclopsAtkMul = 1;
+  player.laserChargeT = 0; player.laserTickT = 0; player.laserPath = null; player.laserFlashT = 0;
+  player.absoluteField = false; player.fieldTickT = 0;
+  player.missileLauncher = false; player.missileT = 0;
   player.voidForm = false; player.voidT = 0;
   player.deepCrit = false; player.devilPower = false;
   player.r = 13;
@@ -1514,6 +1523,8 @@ function firePhaseAttack(e, phase) {
 
 // ============== 子弹 ==============
 function fire() {
+  // 独眼形态: 攻击形态变为蓄力激光, 不再生成子弹 (激光由 updatePlayerLaser 每帧维护)
+  if (player.cyclops) return;
   const n = player.projectiles;
   // player.spread = 基础相邻弹道夹角. 每多一弹道总扩散 +spread (受集中射击影响)
   const totalSpread = Math.max(0, n - 1) * player.spread;
@@ -1544,11 +1555,346 @@ function fire() {
   }
 }
 
+// ============== 独眼激光 ==============
+// 伤害节拍固定 (每脉冲间隔 ≥ LASER_TICK_INTERVAL); 蓄力时间 = 1/fireRate
+// 实际脉冲周期 = max(LASER_TICK_INTERVAL, 1/fireRate), 攻速越高越接近 LASER_TICK_INTERVAL 上限
+const LASER_TICK_INTERVAL = 1 / 15;
+const LASER_SEG_LEN = 14;        // 弯曲激光分段长度 (px)
+const LASER_TURN_RADIUS = 50;    // 弯曲激光固定转弯半径 (px). 越大跟踪越温和
+const LASER_MAX_LEN = 1200;      // 路径最大长度
+
+function computeLaserPath() {
+  const sx = player.x, sy = player.y - 12;
+  const path = [{ x: sx, y: sy }];
+  if (player.homing > 0) {
+    let x = sx, y = sy, dir = -Math.PI / 2;
+    let total = 0;
+    const turn = LASER_SEG_LEN / LASER_TURN_RADIUS;
+    const halfWidth = 6.4 * player.bulletSize;
+    const scanR = player.baseMagnetRange;  // 触发追踪的扫描半径 (= 吸金范围, 不随贪婪扩大)
+    const scanR2 = scanR * scanR;
+    const hit = new Set();
+    let target = null;
+    while (total < LASER_MAX_LEN && x > -60 && x < W + 60 && y > -60 && y < H + 60) {
+      // 仅在当前方向"前方半圆"内 + scanR 内寻找未命中敌人 (取最近), 避免绕回身后敌人
+      if (!target || target.dead || hit.has(target) ||
+          target.warningT > 0 || target.invuln === true || target.invuln > 0) {
+        target = null;
+        let bd = scanR2;
+        const fx = Math.cos(dir), fy = Math.sin(dir);
+        for (const e of enemies) {
+          if (e.dead || hit.has(e) || e.warningT > 0) continue;
+          if (e.invuln === true || e.invuln > 0) continue;
+          const dx = e.x - x, dy = e.y - y;
+          if (dx * fx + dy * fy < 0) continue;  // 在身后, 跳过
+          const d2 = dx * dx + dy * dy;
+          if (d2 < bd) { bd = d2; target = e; }
+        }
+      }
+      // 有目标 → 弯向目标; 无目标 → 沿当前方向直线推进
+      if (target) {
+        const aim = Math.atan2(target.y - y, target.x - x);
+        let diff = aim - dir;
+        while (diff > Math.PI) diff -= TAU;
+        while (diff < -Math.PI) diff += TAU;
+        diff = clamp(diff, -turn, turn);
+        dir += diff;
+      }
+      const px = x, py = y;
+      x += Math.cos(dir) * LASER_SEG_LEN;
+      y += Math.sin(dir) * LASER_SEG_LEN;
+      path.push({ x, y });
+      total += LASER_SEG_LEN;
+      // 当前段穿过当前目标 → 标记并解锁, 之后保持当前方向直到再有敌人入扫描范围
+      if (target && pointToLineDist(target.x, target.y, px, py, x, y) < target.r + halfWidth) {
+        hit.add(target);
+        target = null;
+      }
+    }
+  } else {
+    path.push({ x: sx, y: -50 });
+  }
+  return path;
+}
+
+function laserSegHits(e, path, halfWidth) {
+  const reach = e.r + halfWidth;
+  for (let i = 0; i < path.length - 1; i++) {
+    const p0 = path[i], p1 = path[i + 1];
+    if (pointToLineDist(e.x, e.y, p0.x, p0.y, p1.x, p1.y) < reach) return true;
+  }
+  return false;
+}
+
+function laserPulse(path) {
+  const halfWidth = 6.4 * player.bulletSize;
+  for (const e of enemies) {
+    if (e.dead || e.warningT > 0) continue;
+    if (e.invuln === true || e.invuln > 0) continue;
+    if (!laserSegHits(e, path, halfWidth)) continue;
+    let critCount;
+    if (player.deepCrit) {
+      const full = Math.floor(player.critRate);
+      const frac = player.critRate - full;
+      critCount = full + (Math.random() < frac ? 1 : 0);
+    } else {
+      critCount = Math.random() < player.critRate ? 1 : 0;
+    }
+    const dmg = player.atk * Math.pow(player.critDmg, critCount);
+    const fakeB = {
+      x: e.x, y: e.y - 6,
+      dmg, crit: critCount > 0, critCount,
+      from: 'player',
+    };
+    hitEnemy(e, fakeB);
+  }
+}
+
+function laserParry(path) {
+  const halfWidth = 6.4 * player.bulletSize;
+  for (const eb of bullets) {
+    if (eb.from !== 'enemy' || eb.dead) continue;
+    const reach = eb.r + halfWidth;
+    for (let i = 0; i < path.length - 1; i++) {
+      const p0 = path[i], p1 = path[i + 1];
+      if (pointToLineDist(eb.x, eb.y, p0.x, p0.y, p1.x, p1.y) < reach) {
+        eb.dead = true;
+        addHitParticles(eb.x, eb.y);
+        break;
+      }
+    }
+  }
+}
+
+function updatePlayerLaser(dt) {
+  player.laserPath = computeLaserPath();
+  player.laserChargeT += dt;
+  player.laserTickT += dt;
+  const need = 1 / Math.max(0.01, player.fireRate);
+  if (player.laserChargeT >= need && player.laserTickT >= LASER_TICK_INTERVAL) {
+    player.laserChargeT = 0;
+    player.laserTickT = 0;
+    player.laserFlashT = 0.09;
+    laserPulse(player.laserPath);
+  }
+  if (player.laserFlashT > 0) player.laserFlashT = Math.max(0, player.laserFlashT - dt);
+  // 以攻为守: 激光路径上每帧清扫敌方子弹
+  if (player.bulletParry) laserParry(player.laserPath);
+}
+
+function drawPlayerLaser() {
+  if (!player.cyclops) return;
+  if (game.state !== 'playing' && game.state !== 'collecting' && game.state !== 'paused' && game.state !== 'resuming') return;
+  const path = player.laserPath || computeLaserPath();
+  if (path.length < 2) return;
+  const halfWidth = 6.4 * player.bulletSize;
+  const need = 1 / Math.max(0.01, player.fireRate);
+  const charge = clamp(player.laserChargeT / need, 0, 1);
+  const flash = player.laserFlashT > 0 ? clamp(player.laserFlashT / 0.09, 0, 1) : 0;
+  const intensity = 0.45 + 0.55 * charge;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // 外发光
+  ctx.strokeStyle = `rgba(140, 200, 255, ${0.16 * intensity + 0.25 * flash})`;
+  ctx.lineWidth = halfWidth * 4.2;
+  ctx.beginPath();
+  ctx.moveTo(path[0].x, path[0].y);
+  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+  ctx.stroke();
+  // 中层
+  ctx.strokeStyle = `rgba(120, 220, 255, ${0.5 * intensity + 0.3 * flash})`;
+  ctx.lineWidth = halfWidth * 2.0;
+  ctx.beginPath();
+  ctx.moveTo(path[0].x, path[0].y);
+  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+  ctx.stroke();
+  // 核心亮线
+  ctx.strokeStyle = `rgba(255, 255, 255, ${0.85 * intensity + 0.15 * flash})`;
+  ctx.lineWidth = Math.max(1, halfWidth * 0.7);
+  ctx.beginPath();
+  ctx.moveTo(path[0].x, path[0].y);
+  for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ============== 绝对领域 ==============
+const FIELD_TICK_INTERVAL = 1.0;
+function updateAbsoluteField(dt) {
+  player.fieldTickT += dt;
+  if (player.fieldTickT < FIELD_TICK_INTERVAL) return;
+  player.fieldTickT -= FIELD_TICK_INTERVAL;
+  const R = player.baseMagnetRange;
+  const R2 = R * R;
+  for (const e of enemies) {
+    if (e.dead || e.warningT > 0) continue;
+    if (e.invuln === true || e.invuln > 0) continue;
+    const dx = e.x - player.x, dy = e.y - player.y;
+    if (dx * dx + dy * dy >= R2) continue;
+    // 领域伤害不暴击 (固定 = atk, critCount=0)
+    hitEnemy(e, {
+      x: e.x, y: e.y - 6,
+      dmg: player.atk, crit: false, critCount: 0,
+      from: 'player',
+    });
+  }
+}
+
+function drawAbsoluteField() {
+  if (!player.absoluteField) return;
+  const R = player.baseMagnetRange;
+  // 充能进度 (用作脉动透明度), 接近脉冲触发时高亮
+  const phase = clamp(player.fieldTickT / FIELD_TICK_INTERVAL, 0, 1);
+  ctx.save();
+  ctx.fillStyle = `rgba(160, 120, 255, ${0.06 + phase * 0.05})`;
+  ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, TAU); ctx.fill();
+  ctx.strokeStyle = `rgba(180, 140, 255, ${0.35 + phase * 0.4})`;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(player.x, player.y, R, 0, TAU); ctx.stroke();
+  // 内圈细线 (随充能扩张)
+  ctx.strokeStyle = `rgba(220, 200, 255, ${0.25 * phase})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(player.x, player.y, R * (0.55 + 0.45 * phase), 0, TAU); ctx.stroke();
+  ctx.restore();
+}
+
+// ============== 寻的导弹 ==============
+const MISSILE_INTERVAL = 3.0;
+const MISSILE_INIT_SPEED = 200;
+const MISSILE_ACCEL = 1200;
+const MISSILE_MAX_SPEED = 700;
+const MISSILE_DIRECT_MUL = 1.5;
+const MISSILE_AOE_R = 90;
+const MISSILE_AOE_MUL = 1.0;
+
+function spawnMissile() {
+  // 找左右两侧最近的可击目标 (按敌人 x 与 player.x 的相对位置分组)
+  let bestL = null, bdL = Infinity;
+  let bestR = null, bdR = Infinity;
+  for (const e of enemies) {
+    if (e.dead || e.warningT > 0) continue;
+    if (e.invuln === true || e.invuln > 0) continue;
+    const dx = e.x - player.x, dy = e.y - player.y;
+    const d2 = dx * dx + dy * dy;
+    if (e.x <= player.x) {
+      if (d2 < bdL) { bdL = d2; bestL = e; }
+    } else {
+      if (d2 < bdR) { bdR = d2; bestR = e; }
+    }
+  }
+  // 一侧没敌人 → 两枚共享同一目标
+  if (!bestL) bestL = bestR;
+  if (!bestR) bestR = bestL;
+  const offset = 14;
+  // 左侧弹
+  const al = -Math.PI / 2 - rand(0.05, 0.25);
+  bullets.push({
+    x: player.x - offset, y: player.y - 6,
+    vx: Math.cos(al) * MISSILE_INIT_SPEED,
+    vy: Math.sin(al) * MISSILE_INIT_SPEED,
+    r: 5, from: 'player', type: 'missile',
+    target: bestL, age: 0, pierce: 0, hit: null, dmg: 0,
+  });
+  // 右侧弹
+  const ar = -Math.PI / 2 + rand(0.05, 0.25);
+  bullets.push({
+    x: player.x + offset, y: player.y - 6,
+    vx: Math.cos(ar) * MISSILE_INIT_SPEED,
+    vy: Math.sin(ar) * MISSILE_INIT_SPEED,
+    r: 5, from: 'player', type: 'missile',
+    target: bestR, age: 0, pierce: 0, hit: null, dmg: 0,
+  });
+}
+
+function missileImpact(b, direct) {
+  // 直接命中: 可暴击, 1.5 × atk
+  if (direct && !direct.dead && direct.invuln !== true && !(direct.invuln > 0) && direct.warningT <= 0) {
+    let cc;
+    if (player.deepCrit) {
+      const full = Math.floor(player.critRate);
+      const frac = player.critRate - full;
+      cc = full + (Math.random() < frac ? 1 : 0);
+    } else {
+      cc = Math.random() < player.critRate ? 1 : 0;
+    }
+    const dmg = player.atk * MISSILE_DIRECT_MUL * Math.pow(player.critDmg, cc);
+    hitEnemy(direct, {
+      x: direct.x, y: direct.y - 6,
+      dmg, crit: cc > 0, critCount: cc,
+      from: 'player',
+    });
+  }
+  // 范围伤害: 不暴击, 直接命中目标不重复结算
+  const R2 = MISSILE_AOE_R * MISSILE_AOE_R;
+  const aoeDmg = player.atk * MISSILE_AOE_MUL;
+  for (const e of enemies) {
+    if (e === direct || e.dead || e.warningT > 0) continue;
+    if (e.invuln === true || e.invuln > 0) continue;
+    const dx = e.x - b.x, dy = e.y - b.y;
+    if (dx * dx + dy * dy >= R2) continue;
+    hitEnemy(e, {
+      x: e.x, y: e.y - 6,
+      dmg: aoeDmg, crit: false, critCount: 0,
+      from: 'player',
+    });
+  }
+  // 爆炸清弹: 仅在拥有 parry 时触发 (与飞弹可被 parry 联动构成统一规则)
+  if (player.bulletParry) {
+    for (const eb of bullets) {
+      if (eb.from !== 'enemy' || eb.dead) continue;
+      const dx = eb.x - b.x, dy = eb.y - b.y;
+      if (dx * dx + dy * dy < R2) {
+        eb.dead = true;
+        addHitParticles(eb.x, eb.y);
+      }
+    }
+  }
+  addExplosion(b.x, b.y, '#ff8050', 22);
+  game.shake = Math.max(game.shake, 0.18);
+}
+
 function spawnEnemyBullet(x, y, a, sp, dmg) {
   bullets.push({ x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, r: 5, dmg, from:'enemy' });
 }
 
 function updateBullet(b, dt) {
+  // 绝对领域: 子弹位于领域内时 dt 减半 (位移 / 转向 / 加速度同步降速)
+  if (player.absoluteField) {
+    const dx = b.x - player.x, dy = b.y - player.y;
+    if (dx * dx + dy * dy < player.baseMagnetRange * player.baseMagnetRange) dt *= 0.5;
+  }
+  // 寻的导弹: 强追踪 (加速度 + 速度上限), 不走通用 homing 分支
+  if (b.type === 'missile') {
+    b.age = (b.age || 0) + dt;
+    if (!b.target || b.target.dead || b.target.warningT > 0 ||
+        b.target.invuln === true || b.target.invuln > 0) {
+      let bd = Infinity, best = null;
+      for (const e of enemies) {
+        if (e.dead || e.warningT > 0) continue;
+        if (e.invuln === true || e.invuln > 0) continue;
+        const dx = e.x - b.x, dy = e.y - b.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bd) { bd = d2; best = e; }
+      }
+      b.target = best;
+    }
+    if (b.target) {
+      const dx = b.target.x - b.x, dy = b.target.y - b.y;
+      const d = Math.hypot(dx, dy) || 1;
+      b.vx += (dx / d) * MISSILE_ACCEL * dt;
+      b.vy += (dy / d) * MISSILE_ACCEL * dt;
+      const sp = Math.hypot(b.vx, b.vy);
+      if (sp > MISSILE_MAX_SPEED) {
+        b.vx = b.vx / sp * MISSILE_MAX_SPEED;
+        b.vy = b.vy / sp * MISSILE_MAX_SPEED;
+      }
+    }
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    if (b.x < -50 || b.x > W + 50 || b.y < -50 || b.y > H + 50) b.dead = true;
+    return;
+  }
   if (b.from === 'player' && b.homing > 0) {
     let best = null, bd = 280;
     for (const e of enemies) {
@@ -1682,6 +2028,16 @@ function collideKill() {
     game.shake = 0.45;
     floats.push({ x: player.x, y: player.y, t: 0.7, life: 0.7, txt: '盾被击破!', color: '#7df', size: 14 });
   } else {
+    // 死神飞弹殉爆: 无盾被撞 → 飞弹在玩家身上引爆, 直接死亡
+    if (player.missileLauncher) {
+      addExplosion(player.x, player.y, '#ff8050', 40);
+      addExplosion(player.x, player.y, '#fff0c0', 18);
+      game.shake = 0.85;
+      floats.push({ x: player.x, y: player.y - 14, t: 1.0, life: 1.0, txt: '殉爆!', color:'#ff5040', size: 18 });
+      player.hp = 0;
+      onGameOver();
+      return;
+    }
     const dmg = game.activeCurses.has('wrath') ? 2 : 1;
     player.hp -= dmg;
     player.shieldDelay = player.shieldRegenDelayBase;
@@ -1923,14 +2279,15 @@ const SHOP_UNIQUE = [
       recompute();
       p.hp = Math.min(p.maxHp, p.hp + 2);
     } },
-  { id:'cyclops', n:'独眼形态', ico:'⊙', cost:130, unique:true,
-    good:['弹道数恒定为 1', '每个额外弹道结算为攻击 ×1.50'], bad:[],
+  { id:'cyclops', n:'超能光束', ico:'⊙', cost:130, unique:true,
+    good:['将攻击方式转化为无限穿透的激光', '额外弹道转化为 1.5 攻击倍率 (独立)'], bad:[],
     can: p => !p.cyclops,
     apply: p => {
       const extra = Math.max(0, p.projectiles - 1);
       p.cyclops = true;
       if (extra > 0) p.cyclopsAtkMul *= Math.pow(1.5, extra);
       p.projectiles = 1;
+      p.laserChargeT = 0; p.laserTickT = 0; p.laserFlashT = 0; p.laserPath = null;
       recompute();
     } },
   { id:'void', n:'虚无形态', ico:'○', cost:120, unique:true,
@@ -1956,6 +2313,15 @@ const SHOP_UNIQUE = [
       recompute();
       if (p.shield > p.maxShield) p.shield = p.maxShield;
     } },
+  { id:'missile', n:'死神飞弹', ico:'☠', cost:160, unique:true,
+    good:['每 3 秒发射 2 枚飞弹, 造成基于攻击力的范围伤害'],
+    bad:['无护盾遭到撞击将产生殉爆, 直接死亡'],
+    can: p => !p.missileLauncher,
+    apply: p => { p.missileLauncher = true; p.missileT = 0; } },
+  { id:'absfield', n:'绝对领域', ico:'⊛', cost:150, unique:true,
+    good:['领域内敌人每 1 秒受到 1 次攻击伤害', '领域内所有子弹速度减半', '领域半径 = 拾取金币范围 (不随贪婪扩大)'], bad:[],
+    can: p => !p.absoluteField,
+    apply: p => { p.absoluteField = true; p.fieldTickT = 0; } },
   { id:'devilpower', n:'恶魔之力', ico:'⛧', cost:200, unique:true, minRound:6,
     good:['深度暴击: 暴击率 ≥ 100% 时溢出再次暴击 (伤害 ×暴伤²)'], bad:['每波开始额外背负一个诅咒'],
     apply: p => { p.deepCrit = true; p.devilPower = true; } },
@@ -2247,6 +2613,9 @@ function retryWave() {
   player.knockVx = 0; player.knockVy = 0; player.knockT = 0;
   player.voidT = 0;
   player.shotCD = 0;
+  player.laserChargeT = 0; player.laserTickT = 0; player.laserFlashT = 0;
+  player.fieldTickT = 0;
+  player.missileT = 0;
   if (player.guardian) player.guardian.hitMap = new Map();
   recompute();
   if (player.hp > player.maxHp) player.hp = player.maxHp;
@@ -2419,10 +2788,29 @@ function update(dt) {
 
   // 自动射击 (仅 playing 状态; 收集阶段不再开火)
   if (game.state === 'playing') {
-    player.shotCD -= dt;
-    if (player.shotCD <= 0) {
-      fire();
-      player.shotCD = 1 / player.fireRate;
+    if (player.cyclops) {
+      updatePlayerLaser(dt);
+    } else {
+      player.shotCD -= dt;
+      if (player.shotCD <= 0) {
+        fire();
+        player.shotCD = 1 / player.fireRate;
+      }
+    }
+  } else if (player.cyclops) {
+    // 收集 / 暂停时不发射, 但保留路径用于绘制
+    player.laserPath = computeLaserPath();
+  }
+
+  // 绝对领域: 仅 playing 状态触发伤害脉冲 (子弹减速逻辑在 updateBullet 中, 不需要状态判定)
+  if (game.state === 'playing' && player.absoluteField) updateAbsoluteField(dt);
+
+  // 寻的导弹: 固定间隔发射, 不受射速影响
+  if (game.state === 'playing' && player.missileLauncher) {
+    player.missileT -= dt;
+    if (player.missileT <= 0) {
+      player.missileT = MISSILE_INTERVAL;
+      spawnMissile();
     }
   }
 
@@ -2466,6 +2854,18 @@ function update(dt) {
   for (const b of bullets) {
     if (b.dead) continue;
     if (b.from === 'player') {
+      // 寻的导弹: 命中即爆炸 (直接命中可暴击, AoE 不暴击)
+      if (b.type === 'missile') {
+        for (const e of enemies) {
+          if (e.dead) continue;
+          if (dist(b, e) < e.r + b.r) {
+            missileImpact(b, e);
+            b.dead = true;
+            break;
+          }
+        }
+        continue;
+      }
       for (const e of enemies) {
         if (e.dead) continue;
         if (b.hit && b.hit.has(e)) continue;
@@ -2487,6 +2887,7 @@ function update(dt) {
   }
 
   // 以攻为守: 玩家子弹与敌弹接触双方消除 (激光是矩形不在此处)
+  // 子弹有穿透时, parry 也消耗 pierce, 可以连续消除多颗敌弹
   if (player.bulletParry) {
     for (let i = 0; i < bullets.length; i++) {
       const pb = bullets[i];
@@ -2495,9 +2896,20 @@ function update(dt) {
         const eb = bullets[j];
         if (eb.from !== 'enemy' || eb.dead) continue;
         if (Math.hypot(pb.x - eb.x, pb.y - eb.y) < pb.r + eb.r + 2) {
-          pb.dead = true; eb.dead = true;
+          eb.dead = true;
           addHitParticles(eb.x, eb.y);
-          break;
+          // 死神飞弹被敌弹击中 → 原地殉爆 (爆炸内含 AoE + 清弹)
+          if (pb.type === 'missile') {
+            missileImpact(pb, null);
+            pb.dead = true;
+            break;
+          }
+          if (pb.pierce > 0) {
+            pb.pierce--;
+          } else {
+            pb.dead = true;
+            break;
+          }
         }
       }
     }
@@ -2708,11 +3120,13 @@ function draw() {
   ctx.globalAlpha = 1;
 
   for (const c of coins) drawCoin(c);
+  drawAbsoluteField();
   // 玩家子弹最先 (最底层弹幕), 然后敌人/守护球, 最后敌弹与玩家
   for (const b of bullets) if (b.from === 'player') drawBullet(b);
   for (const e of enemies) drawEnemy(e);
   drawShockwaves();
   drawGuardian();
+  drawPlayerLaser();
   for (const b of bullets) if (b.from === 'enemy') drawBullet(b);
   // 己方飞机最后绘制, 始终在所有弹幕之上
   if (game.state !== 'gameover') drawPlayer();
@@ -3078,17 +3492,21 @@ function drawEnemy(e) {
     const t = e.phaseT;
     for (let i = 0; i < 3; i++) {
       const c = e.corners[i];
-      // 锁定阶段虚线警告 (仅预瞄线, 不标玩家位置)
+      // 锁定阶段虚线警告: 沿锁定方向延伸到屏幕外, 不在玩家位置截断 (与实际激光长度一致)
       if (t >= c.lockT && t < c.fireT && e.cornerTargets[i]) {
         const start = verts[c.key];
         const tgt = e.cornerTargets[i];
+        const dx = tgt.x - start.x, dy = tgt.y - start.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ex = start.x + (dx / len) * 1500;
+        const ey = start.y + (dy / len) * 1500;
         ctx.save();
         ctx.strokeStyle = 'rgba(255, 120, 200, 0.55)';
         ctx.lineWidth = 2;
         ctx.setLineDash([4, 6]);
         ctx.beginPath();
         ctx.moveTo(start.x, start.y);
-        ctx.lineTo(tgt.x, tgt.y);
+        ctx.lineTo(ex, ey);
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.restore();
@@ -3175,6 +3593,38 @@ function drawEnemy(e) {
 
 function drawBullet(b) {
   if (b.from === 'player') {
+    if (b.type === 'missile') {
+      const a = Math.atan2(b.vy, b.vx);
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(a);
+      // 火焰尾迹 (随机抖动, 稍长于本体)
+      const tail = 14 + Math.random() * 4;
+      const grad = ctx.createLinearGradient(-tail, 0, 0, 0);
+      grad.addColorStop(0, 'rgba(255, 80, 30, 0)');
+      grad.addColorStop(0.6, 'rgba(255, 160, 60, 0.7)');
+      grad.addColorStop(1, 'rgba(255, 230, 180, 0.95)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(-tail, 0);
+      ctx.lineTo(-3, -3);
+      ctx.lineTo(-3, 3);
+      ctx.closePath();
+      ctx.fill();
+      // 弹体 (尖头三角)
+      ctx.fillStyle = '#ffd0a0';
+      ctx.beginPath();
+      ctx.moveTo(8, 0);
+      ctx.lineTo(-3, -3.5);
+      ctx.lineTo(-3, 3.5);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#c8543a';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.restore();
+      return;
+    }
     const cc = b.critCount || 0;
     if (cc >= 2) ctx.fillStyle = '#ff4d5e';        // 深度暴击 - 红
     else if (cc >= 1) ctx.fillStyle = '#ffe066';   // 暴击 - 黄
@@ -3229,7 +3679,8 @@ function updateUI() {
   lines.push(`暴击 ${(player.critRate*100).toFixed(0)}%`);
   lines.push(`暴伤 ×${player.critDmg.toFixed(2)}`);
   if (player.projectiles > 1) lines.push(`<span class="extra">弹道 ${player.projectiles}</span>`);
-  if (player.pierce > 0) lines.push(`<span class="extra">穿透 ${player.pierce}</span>`);
+  if (player.cyclops) lines.push(`<span class="extra">穿透 ∞</span>`);
+  else if (player.pierce > 0) lines.push(`<span class="extra">穿透 ${player.pierce}</span>`);
   if (player.homing > 0) lines.push(`<span class="extra">追踪</span>`);
   if (player.evade > 0) lines.push(`<span class="extra">闪避 ${(player.evade*100).toFixed(0)}%</span>`);
   document.getElementById('stats').innerHTML = lines.map(s => `<div>${s}</div>`).join('');
