@@ -33,6 +33,33 @@
     touch-action:none;
   }
 
+  /* 右上暂停按钮 */
+  #pauseBtn {
+    position: absolute;
+    top: clamp(6px, 1.5vmin, 12px);
+    right: clamp(6px, 1.5vmin, 12px);
+    width: clamp(28px, 6vmin, 38px);
+    height: clamp(28px, 6vmin, 38px);
+    background: rgba(20, 30, 50, 0.85);
+    border: 1px solid #4a6a8a;
+    color: #cef;
+    font-size: clamp(14px, 3vmin, 18px);
+    cursor: pointer;
+    border-radius: 4px;
+    pointer-events: auto;
+    z-index: 5;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    padding: 0;
+    line-height: 1;
+    font-family: inherit;
+    margin: 0;
+  }
+  #pauseBtn:hover { background: rgba(40, 60, 90, 0.95); border-color:#6cf; }
+  #pauseBtn.show { display: flex; }
+
   /* HUD: 使用 vmin 让字号随窗口缩放 */
   #hud {
     position:absolute; top:1.2vmin; left:1.6vmin; right:1.6vmin;
@@ -222,6 +249,7 @@
       <div class="stats-line" id="stats"></div>
     </div>
   </div>
+  <button id="pauseBtn" type="button">⏸</button>
   <div class="overlay show" id="overlay"></div>
 </div>
 <script>
@@ -864,10 +892,10 @@ function computeNewEnemyType(round, wave) {
 
 function generateWave(round, wave) {
   const q = [];
-  // 普通敌人随轮次 ×2 / 轮; boss 单独 ×3 / 轮
-  const scale = Math.pow(2, round - 1);
+  // 普通敌人随轮次 ×1.8 / 轮; boss 单独 ×2.5 / 轮
+  const scale = Math.pow(1.8, round - 1);
   if (wave === game.wavesPerRound) {
-    const bossScale = Math.pow(3, round - 1);
+    const bossScale = Math.pow(2.5, round - 1);
     q.push({ type:'boss', scale: bossScale, gap: 1.0 });
     return q;
   }
@@ -955,7 +983,7 @@ function spawnEnemy(s) {
     e.coin = 10; e.color = '#ff8844';
   } else if (s.type === 'interceptor') {
     // 拦截机: 从左右屏幕中段出现, 警示后锁定玩家位置直线高速冲撞
-    e.r = 14; e.maxHp = 30 * sc;
+    e.r = 14; e.maxHp = 18 * sc;
     const fromLeft = Math.random() < 0.5;
     e.x = fromLeft ? 8 : W - 8;
     e.y = rand(H / 3, 2 * H / 3);
@@ -2712,6 +2740,38 @@ function draw() {
   if (boss) drawBossHpBar(boss);
 
   ctx.restore();
+
+  // 暂停 / 恢复倒计时遮罩 (在屏幕震动 restore 之外, 不抖动)
+  if (game.state === 'paused') {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#cef';
+    ctx.font = 'bold 36px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('已 暂 停', W / 2, H / 2);
+    ctx.font = '13px sans-serif';
+    ctx.fillStyle = 'rgba(200,220,240,0.7)';
+    ctx.fillText('点击右上角按钮恢复', W / 2, H / 2 + 40);
+    ctx.textBaseline = 'alphabetic';
+  } else if (game.state === 'resuming') {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillRect(0, 0, W, H);
+    const num = Math.max(1, Math.ceil(game.resumeT));
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 90px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    // 数字逐秒变化时弹跳
+    const phase = 1 - (game.resumeT - Math.floor(game.resumeT));
+    const sc = 0.85 + 0.25 * Math.exp(-phase * 4);
+    ctx.save();
+    ctx.translate(W / 2, H / 2);
+    ctx.scale(sc, sc);
+    ctx.fillText(num, 0, 0);
+    ctx.restore();
+    ctx.textBaseline = 'alphabetic';
+  }
 }
 
 function drawPlayer() {
@@ -3171,6 +3231,9 @@ function updateUI() {
   document.getElementById('stats').innerHTML =
     `攻 ${player.atk.toFixed(1)} · 速 ${player.fireRate.toFixed(1)}/s · 弹速 ${Math.round(player.bulletSpeed)}` +
     `<br>暴 ${(player.critRate*100).toFixed(0)}%/${(player.critDmg*100).toFixed(0)}% · 移速 ${Math.round(player.moveSpeed)}` + extras;
+  // 暂停按钮仅在战斗 / 已暂停 / 倒计时 时显示
+  const showPause = game.state === 'playing' || game.state === 'collecting' || game.state === 'paused' || game.state === 'resuming';
+  pauseBtn.classList.toggle('show', showPause);
 }
 
 // ============== 主循环 ==============
@@ -3180,6 +3243,13 @@ function loop(now) {
   lastTime = now;
   if (game.state === 'playing' || game.state === 'collecting') {
     update(dt);
+  } else if (game.state === 'resuming') {
+    // 倒计时 3 秒, 不更新游戏
+    game.resumeT -= dt;
+    if (game.resumeT <= 0) {
+      game.state = 'playing';
+      pauseBtn.textContent = '⏸';
+    }
   } else {
     for (const s of stars) { s.y += s.v * dt * 0.3; if (s.y > H) { s.y = -2; s.x = Math.random()*W; } }
   }
@@ -3187,6 +3257,21 @@ function loop(now) {
   updateUI();
   requestAnimationFrame(loop);
 }
+
+// 暂停按钮
+const pauseBtn = document.getElementById('pauseBtn');
+pauseBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (game.state === 'playing' || game.state === 'collecting') {
+    game.prevState = game.state;
+    game.state = 'paused';
+    pauseBtn.textContent = '▶';
+  } else if (game.state === 'paused') {
+    game.state = 'resuming';
+    game.resumeT = 3;
+  }
+});
+
 requestAnimationFrame(loop);
 
 showStartScreen();
