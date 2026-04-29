@@ -2065,8 +2065,9 @@ function collideKillBoss(b) {
 function damagePlayer() {
   if (player.invuln > 0) return;
   if (player.evade > 0 && Math.random() < player.evade) {
-    player.invuln = 0.3;
-    floats.push({ x: player.x, y: player.y - 8, t: 0.6, life: 0.6, txt: '闪避', color: '#7df', size: 13 });
+    // 闪避: 视同被命中, 给一段无敌时间 (傲慢诅咒下取消)
+    player.invuln = game.activeCurses.has('pride') ? 0 : 0.6;
+    floats.push({ x: player.x, y: player.y - 10, t: 0.7, life: 0.7, txt: '闪避!', color: '#7df', size: 15 });
     return;
   }
   // 愤怒: 受伤翻倍 (本波生效)
@@ -2231,18 +2232,18 @@ const SHOP_ITEMS = [
 
 // 独特道具: 击败 Boss 后才出现, 每个仅可获得一次, 价格大幅高于普通道具
 const SHOP_UNIQUE = [
-  { id:'megawave', n:'究极冲击波', ico:'◎', cost:80, unique:true,
+  { id:'megawave', n:'守护力场', ico:'◎', cost:80, unique:true,
     good:['每次失去生命值', '触发一次冲击波'], bad:[],
     apply: p => { p.shockwaveOnHit = true; } },
   { id:'parry', n:'以攻为守', ico:'⚔', cost:100, unique:true,
-    good:['玩家子弹与敌弹互相抵消', '(对激光无效)'], bad:['护盾上限永久清零'],
+    good:['玩家子弹与敌弹互相抵消'], bad:['护盾上限永久清零'],
     can: p => !p.bulletParry,
     apply: p => { p.bulletParry = true; p.shield = 0; recompute(); } },
   { id:'hedonism', n:'罪恶快感', ico:'♥', cost:66, unique:true,
     good:['每击杀 30 个敌人', '恢复 1 格生命'], bad:[],
     apply: p => { p.killHealEnabled = true; } },
   { id:'guardian', n:'神圣守护', ico:'✦', cost:140, unique:true,
-    good:['一颗光球绕飞', '消除接触敌弹', '撞击伤害 = 攻击 × 攻速 × 弹道数', '(对激光无效)'], bad:[],
+    good:['召唤守护光球, 消除接触的敌方子弹, 撞击敌人造成基于 DPS 的伤害'], bad:[],
     apply: p => { p.guardian = { angle: 0, hitMap: new Map() }; } },
   { id:'psybullet', n:'灵能子弹', ico:'✺', cost:180, unique:true,
     good:['追踪 +0.4'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
