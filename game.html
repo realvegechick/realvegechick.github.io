@@ -285,7 +285,7 @@ const game = {
 const BOSS_SKILLS = [
   { name:'环形脉冲', desc:'向四周喷射 16 发圆形弹幕, 节奏缓慢' },
   { name:'扇形追踪', desc:'5 发追玩家位置的密集弹幕' },
-  { name:'援军召唤', desc:'召唤一波分裂/钉刺/拦截机, 容量为本波 1/3' },
+  { name:'援军召唤', desc:'召唤一波分裂/钉刺/拦截/自爆机, 容量为本波 1/6 (二阶段强化为 1/4)' },
   { name:'横扫激光', desc:'锁定向下的高伤害激光柱, BOSS 横向移动带其扫屏' },
 ];
 
@@ -937,7 +937,7 @@ function spawnEnemy(s) {
     e.coin = 6; e.color = '#4ae3a4';
   } else if (s.type === 'bomber') {
     // 自爆体: 飞至玩家上方停顿后引爆
-    e.r = 18; e.maxHp = 32*sc; e.vy = rand(80, 110);
+    e.r = 18; e.maxHp = 40*sc; e.vy = rand(80, 110);
     e.targetY = clamp(player.y - 220, 80, H - 200);
     e.fuseT = 1.2; e.armed = false;
     e.coin = 4; e.color = '#7e4ad6';
@@ -980,13 +980,15 @@ function spawnEnemy(s) {
   enemies.push(e);
 }
 
-// Boss 第三技能: 召唤一波分裂/钉刺/拦截, 容量 = 当前波威胁容量 / 3
-// 二阶段强化: 池子收敛为随机 2 种, 同时刷出两种敌人混合
+// Boss 第三技能: 召唤一波小怪. 一阶段容量 = 波 cap / 6, 二阶段强化为 / 4
+// 二阶段池子收敛为随机 2 种, 同时刷出两种敌人混合
 function bossSummonWave(boss) {
   const idx = (game.round - 1) * (game.wavesPerRound - 1) + (game.wave - 1);
   const waveCap = 12 + idx * 4;
-  const summonCap = Math.max(2, Math.floor(waveCap / 3));
-  const allTypes = ['splitter', 'spiker', 'interceptor'];
+  const summonCap = boss.phase2
+    ? Math.max(2, Math.floor(waveCap / 4))
+    : Math.max(2, Math.floor(waveCap / 6));
+  const allTypes = ['splitter', 'spiker', 'interceptor', 'bomber'];
   let types;
   if (boss.phase2) {
     // 二阶段: 随机选 2 种, 每次刷 1 种 (混合两类)
@@ -1500,10 +1502,8 @@ function firePhaseAttack(e, phase) {
 // ============== 子弹 ==============
 function fire() {
   const n = player.projectiles;
-  // player.spread = 基础相邻弹道夹角; 每多一弹道, 相邻夹角再 +5° = π/36 rad
-  const extraPerProj = Math.PI / 36;
-  const adjacent = n <= 1 ? 0 : (player.spread + (n - 2) * extraPerProj);
-  const totalSpread = adjacent * Math.max(0, n - 1);
+  // player.spread = 基础相邻弹道夹角. 每多一弹道总扩散 +spread (受集中射击影响)
+  const totalSpread = Math.max(0, n - 1) * player.spread;
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : (i / (n - 1) - 0.5);
     const a = -Math.PI/2 + t * totalSpread;
@@ -1816,9 +1816,9 @@ const SHOP_ITEMS = [
     can: p => p.cyclops || p.projectiles < 7,
     apply: p => { grantProjectile(p, 1); shopMul.atk *= 0.80; recompute(); } },
   { n:'集中射击', ico:'│', cost:22,
-    good:['扩散 -30%', '暴击率 +10%'], bad:[],
+    good:['扩散 -40%', '暴击率 +10%'], bad:[],
     can: p => p.spread > 0.04,
-    apply: p => { p.spread *= 0.70; p.critRate = Math.min(2, p.critRate + 0.10); } },
+    apply: p => { p.spread *= 0.60; p.critRate = Math.min(2, p.critRate + 0.10); } },
   { n:'狂热射击', ico:'⚡', cost:28,
     good:['射速 +15%'], bad:['移速 -15%'],
     apply: p => { shopAdd.fireRatePct += 0.15; shopAdd.moveSpeedPct -= 0.15; recompute(); } },
@@ -1871,7 +1871,7 @@ const SHOP_UNIQUE = [
     good:['每击杀 30 个敌人', '恢复 1 格生命'], bad:[],
     apply: p => { p.killHealEnabled = true; } },
   { id:'guardian', n:'神圣守护', ico:'✦', cost:140, unique:true,
-    good:['一颗光球绕飞', '消除接触敌弹', '撞击造成攻击力伤害', '(对激光无效)'], bad:[],
+    good:['一颗光球绕飞', '消除接触敌弹', '撞击伤害 = 攻击 × 攻速 × 弹道数', '(对激光无效)'], bad:[],
     apply: p => { p.guardian = { angle: 0, hitMap: new Map() }; } },
   { id:'psybullet', n:'灵能子弹', ico:'✺', cost:180, unique:true,
     good:['追踪 +0.4'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
@@ -2049,6 +2049,10 @@ function openShop(isBossClear) {
   game.shopIsBoss = isBossClear;
   game.shopRefreshCost = 10;
   game.shopNormalPicks = pickNormalShopItems();
+  // 进入商店时充满护盾, 让玩家以满状态开始下一波
+  player.shield = player.maxShield;
+  player.shieldDelay = 0;
+  player.shieldRegenT = 0;
   renderShop();
 }
 
@@ -3017,7 +3021,7 @@ function drawEnemy(e) {
     const t = e.phaseT;
     for (let i = 0; i < 3; i++) {
       const c = e.corners[i];
-      // 锁定阶段虚线警告
+      // 锁定阶段虚线警告 (仅预瞄线, 不标玩家位置)
       if (t >= c.lockT && t < c.fireT && e.cornerTargets[i]) {
         const start = verts[c.key];
         const tgt = e.cornerTargets[i];
@@ -3030,9 +3034,6 @@ function drawEnemy(e) {
         ctx.lineTo(tgt.x, tgt.y);
         ctx.stroke();
         ctx.setLineDash([]);
-        // 锁定点小圈
-        ctx.fillStyle = 'rgba(255, 120, 200, 0.6)';
-        ctx.beginPath(); ctx.arc(tgt.x, tgt.y, 6, 0, TAU); ctx.fill();
         ctx.restore();
       }
     }
