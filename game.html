@@ -47,7 +47,7 @@
     cursor: pointer;
     border-radius: 3px;
     pointer-events: auto;
-    z-index: 5;
+    z-index: 11;
     display: none;
     align-items: center;
     justify-content: center;
@@ -65,12 +65,13 @@
   }
   #pauseBtn.show { display: flex; }
 
-  /* HUD: 使用 vmin 让字号随窗口缩放 */
+  /* HUD: 使用 vmin 让字号随窗口缩放. z-index 高于 overlay, 在商店时仍可见 */
   #hud {
     position:absolute; top:1.2vmin; left:1.6vmin; right:1.6vmin;
     pointer-events:none;
     font-size: clamp(10px, 2.4vmin, 13px);
     display:flex; justify-content:space-between; line-height:1.45;
+    z-index: 10;
   }
   .bar {
     width: clamp(70px, 22vmin, 140px);
@@ -79,7 +80,7 @@
   }
   .bar > div { height:100%; transition:width .15s ease-out; }
   .exp > div { background:linear-gradient(90deg,#fc4,#ffe080); }
-  .right { text-align:right; padding-right: clamp(28px, 5.5vmin, 36px); }
+  .right { text-align:right; padding-top: clamp(28px, 5.5vmin, 36px); }
   .stats-line {
     font-size: clamp(9px, 2vmin, 11px);
     opacity:.78; margin-top:4px; line-height:1.5;
@@ -323,7 +324,7 @@ const game = {
 const BOSS_SKILLS = [
   { name:'环形脉冲', desc:'向四周喷射 16 发圆形弹幕, 节奏缓慢' },
   { name:'扇形追踪', desc:'5 发追玩家位置的密集弹幕' },
-  { name:'援军召唤', desc:'召唤一波分裂/钉刺/拦截/自爆机, 容量为本波 1/6 (二阶段强化为 1/4)' },
+  { name:'援军召唤', desc:'召唤一波分裂/钉刺/拦截机, 容量为本波 1/6 (二阶段强化为 1/4)' },
   { name:'横扫激光', desc:'锁定向下的高伤害激光柱, BOSS 横向移动带其扫屏' },
 ];
 
@@ -678,25 +679,10 @@ function showStartScreen() {
   game.state = 'start';
   overlay.className = 'overlay show';
   overlay.innerHTML = `
-    <div id="startScreen">
-      <div class="title">飞机大战 · 肉鸽</div>
-      <div class="subtitle">拖动飞机移动 · 自动射击</div>
-      <div style="font-size:13px; opacity:.85; margin:8px 0">初始属性</div>
-      <div class="stats-grid">
-        <div>血量 <b>${base.maxHp} 格</b></div>
-        <div>护盾 <b>${base.maxShield} 格</b></div>
-        <div>攻击力 <b>${base.atk}</b></div>
-        <div>射速 <b>${base.fireRate}/s</b></div>
-        <div>弹速 <b>${base.bulletSpeed}</b></div>
-        <div>移速 <b>${base.moveSpeed}</b></div>
-      </div>
-      <button id="startBtn">开始游戏</button>
-      <div class="helptext">
-        所有敌人攻击均为 1 点 · 优先扣盾 · 受击 3 秒后护盾按格恢复<br>
-        每击杀若干敌人升级（三选一·基于初始基础值线性叠加）<br>
-        每波清空进入商店 · 商店道具为独立乘区/特殊效果<br>
-        第 4 波 Boss · 击败后进入下一轮 · 敌人血量随轮次增强
-      </div>
+    <div id="startScreen" style="text-align:center;">
+      <div class="title" style="letter-spacing:6px; margin-bottom: clamp(8px, 2vmin, 14px)">飞 机 大 战</div>
+      <div class="subtitle" style="margin-bottom: clamp(24px, 6vmin, 38px)">拖 动 移 动 · 自 动 开 火</div>
+      <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px); letter-spacing:3px;">出 击</button>
     </div>`;
   document.getElementById('startBtn').onclick = startGame;
 }
@@ -1026,7 +1012,7 @@ function bossSummonWave(boss) {
   const summonCap = boss.phase2
     ? Math.max(2, Math.floor(waveCap / 4))
     : Math.max(2, Math.floor(waveCap / 6));
-  const allTypes = ['splitter', 'spiker', 'interceptor', 'bomber'];
+  const allTypes = ['splitter', 'spiker', 'interceptor'];
   let types;
   if (boss.phase2) {
     // 二阶段: 随机选 2 种, 每次刷 1 种 (混合两类)
@@ -1058,12 +1044,13 @@ function spawnMirrorEnemy() {
     maxShield: player.maxShield, shield: player.maxShield,
     fireRate: Math.max(0.5, player.fireRate),
     projectiles: Math.max(1, player.projectiles),
-    moveSpeed: 280,
+    moveSpeed: Math.max(150, player.moveSpeed),
+    bulletSpeed: Math.max(200, player.bulletSpeed),
     color: '#e060c8',
     coin: 0,
     invuln: 2.0,            // 出场无敌 2 秒 (类似 boss 入场)
     spawnInvulnT: 2.0,      // 入场无敌计时, 期间画金色光环
-    invulnT: 1.2,           // 受击后无敌时间 (比玩家更长)
+    invulnT: 0.6,           // 受击后无敌时间, 与玩家一致
     shieldDelay: 0,
     shieldRegenDelayBase: 6,
     shieldRegenInterval: 2.5,
@@ -1084,7 +1071,7 @@ function mirrorFire(e) {
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : (i / (n - 1) - 0.5);
     const a = aim + t * total;
-    spawnEnemyBullet(e.x, e.y, a, 360, 1);
+    spawnEnemyBullet(e.x, e.y, a, e.bulletSpeed || 360, 1);
   }
 }
 
@@ -1383,7 +1370,9 @@ function updateBoss(e, dt) {
 
   e.phaseT += dt;
   e.fireT -= dt;
-  if (e.phaseT > 4) {
+  // 召唤 phase 用时短一些, 便于衔接其他技能
+  const phaseDur = e.phase === 2 ? 2 : 4;
+  if (e.phaseT > phaseDur) {
     e.phaseT = 0;
     // 随机选一个非当前的 phase, 避免连续重复同一种攻击
     if (e.skillCount > 1) {
@@ -1403,23 +1392,9 @@ function updateBoss(e, dt) {
     if (e.phase === 2) bossSummonWave(e);
   }
 
-  // 间隔: 轮次衰减 × boss 出场强化 (intervalMul)
-  const fireFactor = Math.max(0.45, 1 - (game.round - 1) * 0.14) * e.intervalMul;
+  // 单技能内的 fireT 间隔仅按轮次轻度缩短, 不再受 boss 出场强化
+  const fireFactor = Math.max(0.45, 1 - (game.round - 1) * 0.14);
   fireBossPhase(e, e.phase, fireFactor);
-
-  // 并行: 从第 4 次出场起以一定概率额外释放另一个非激光技能, 第 10 次达到 50%
-  if (e.parallelChance > 0) {
-    e.parallelFireT -= dt;
-    if (e.parallelFireT <= 0) {
-      e.parallelFireT = 0.6;
-      if (Math.random() < e.parallelChance) {
-        // 并行可触发 phase 0/1/2 (弹幕 / 召唤), 但不触发激光
-        const others = [];
-        for (let i = 0; i < Math.min(3, e.skillCount); i++) if (i !== e.phase) others.push(i);
-        if (others.length) firePhaseAttack(e, others[Math.floor(Math.random() * others.length)]);
-      }
-    }
-  }
 }
 
 // 主循环用: 处理 fireT 计时并按阶段发射
@@ -1595,15 +1570,16 @@ function updateBullet(b, dt) {
       b.vy = Math.sin(na) * sp;
     }
   }
-  // 色欲: 玩家一定半径内的敌弹受到指向玩家的加速度, 大小与距离成反比
+  // 色欲: 玩家一定半径内的敌弹受到指向玩家的加速度, 大小随距离平方衰减
   if (b.from === 'enemy' && game.activeCurses.has('lust')) {
     const dx = player.x - b.x, dy = player.y - b.y;
     const d = Math.hypot(dx, dy);
-    const R = 160; // 影响半径
+    const R = 100;
     if (d > 0 && d < R) {
-      const K = 14000;
+      const K = 15000;
       const minD = 25;
-      const acc = K / Math.max(d, minD);
+      const dEff = Math.max(d, minD);
+      const acc = K / (dEff * dEff);
       b.vx += (dx / d) * acc * dt;
       b.vy += (dy / d) * acc * dt;
     }
@@ -1620,7 +1596,7 @@ function hitEnemy(e, b) {
     floats.push({ x: b.x, y: b.y - 5, t: 0.4, life: 0.4, txt: '免疫', color: '#fc4', size: 11 });
     return;
   }
-  // 镜像分身: 与玩家受击逻辑一致, 优先扣盾后扣血; 每次扣血恢复全部护盾
+  // 镜像分身: 优先扣盾后扣血; 每次扣血恢复全部护盾
   if (e.type === 'mirror') {
     let lostHp = false;
     if (e.shield > 0) {
@@ -1634,7 +1610,6 @@ function hitEnemy(e, b) {
     addHitParticles(b.x, b.y);
     e.invuln = e.invulnT;
     if (lostHp && e.hp > 0) {
-      // 扣血后立即满盾, 重置恢复延迟
       e.shield = e.maxShield;
       e.shieldDelay = 0;
       e.shieldRegenT = 0;
@@ -1696,22 +1671,25 @@ function hitEnemy(e, b) {
   }
 }
 
-// 玩家碰撞普通敌机: 摧毁全部护盾(若有), 没盾则当场死亡。闪避对碰撞无效。
+// 玩家碰撞敌机: 有盾全部击破; 无盾则扣 1 格生命 (愤怒诅咒下扣 2)。闪避对碰撞无效。
 function collideKill() {
   if (player.invuln > 0) return;
   if (player.shield > 0) {
     player.shield = 0;
     player.shieldDelay = player.shieldRegenDelayBase * 1.5;
     player.shieldRegenT = 0;
-    // 傲慢: 取消受击无敌
     player.invuln = game.activeCurses.has('pride') ? 0 : 0.8;
     game.shake = 0.45;
     floats.push({ x: player.x, y: player.y, t: 0.7, life: 0.7, txt: '盾被击破!', color: '#7df', size: 14 });
   } else {
-    player.hp = 0;
-    game.shake = 0.7;
-    floats.push({ x: player.x, y: player.y, t: 0.7, life: 0.7, txt: '坠毁', color: '#f44', size: 16 });
-    onGameOver();
+    const dmg = game.activeCurses.has('wrath') ? 2 : 1;
+    player.hp -= dmg;
+    player.shieldDelay = player.shieldRegenDelayBase;
+    player.shieldRegenT = 0;
+    player.invuln = game.activeCurses.has('pride') ? 0 : 0.8;
+    game.shake = 0.5;
+    floats.push({ x: player.x, y: player.y, t: 0.7, life: 0.7, txt: '-' + dmg, color: '#f44', size: 16 });
+    if (player.hp <= 0) { player.hp = 0; onGameOver(); }
   }
 }
 
@@ -1969,7 +1947,7 @@ const SHOP_UNIQUE = [
       recompute();
       p.shield = p.maxShield;
     } },
-  { id:'fastcharge', n:'快速充能', ico:'↯', cost:200, unique:true,
+  { id:'fastcharge', n:'快速充能', ico:'↯', cost:150, unique:true,
     good:['护盾恢复延迟 -50%', '充能速度 ×2'], bad:['护盾上限 -1 格'],
     apply: p => {
       p.shieldRegenDelayBase *= 0.5;
@@ -3206,9 +3184,9 @@ function drawBullet(b) {
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(b.x, b.y, 1.5, 0, TAU); ctx.fill();
   } else {
-    ctx.fillStyle = '#f66';
+    ctx.fillStyle = '#d63a3a';
     ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = '#d63a3a'; ctx.lineWidth = 1; ctx.stroke();
   }
 }
 
