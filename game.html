@@ -33,19 +33,19 @@
     touch-action:none;
   }
 
-  /* 右上暂停按钮 */
+  /* 右上暂停按钮 (与 HUD 风格协调: 半透明深底, 细蓝边) */
   #pauseBtn {
     position: absolute;
-    top: clamp(6px, 1.5vmin, 12px);
-    right: clamp(6px, 1.5vmin, 12px);
-    width: clamp(28px, 6vmin, 38px);
-    height: clamp(28px, 6vmin, 38px);
-    background: rgba(20, 30, 50, 0.85);
-    border: 1px solid #4a6a8a;
-    color: #cef;
-    font-size: clamp(14px, 3vmin, 18px);
+    top: clamp(4px, 1vmin, 8px);
+    right: clamp(4px, 1vmin, 8px);
+    width: clamp(22px, 4.5vmin, 28px);
+    height: clamp(22px, 4.5vmin, 28px);
+    background: rgba(15, 22, 36, 0.6);
+    border: 1px solid rgba(100, 140, 190, 0.35);
+    color: rgba(180, 215, 240, 0.85);
+    font-size: clamp(11px, 2.4vmin, 14px);
     cursor: pointer;
-    border-radius: 4px;
+    border-radius: 3px;
     pointer-events: auto;
     z-index: 5;
     display: none;
@@ -56,8 +56,13 @@
     line-height: 1;
     font-family: inherit;
     margin: 0;
+    transition: background .15s, border-color .15s;
   }
-  #pauseBtn:hover { background: rgba(40, 60, 90, 0.95); border-color:#6cf; }
+  #pauseBtn:hover {
+    background: rgba(30, 50, 80, 0.85);
+    border-color: rgba(140, 200, 255, 0.6);
+    color: #dbeeff;
+  }
   #pauseBtn.show { display: flex; }
 
   /* HUD: 使用 vmin 让字号随窗口缩放 */
@@ -74,11 +79,16 @@
   }
   .bar > div { height:100%; transition:width .15s ease-out; }
   .exp > div { background:linear-gradient(90deg,#fc4,#ffe080); }
-  .right { text-align:right; }
+  .right { text-align:right; padding-right: clamp(28px, 5.5vmin, 36px); }
   .stats-line {
     font-size: clamp(9px, 2vmin, 11px);
-    opacity:.75; margin-top:3px; line-height:1.55;
+    opacity:.78; margin-top:4px; line-height:1.5;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
   }
+  .stats-line > div {
+    white-space: nowrap;
+  }
+  .stats-line .extra { color:#9fc4ee; }
 
   /* 弹窗 */
   .overlay {
@@ -1585,21 +1595,17 @@ function updateBullet(b, dt) {
       b.vy = Math.sin(na) * sp;
     }
   }
-  // 色欲: 敌弹被玩家吸引 (方向偏转, 不改变速度大小)
+  // 色欲: 玩家一定半径内的敌弹受到指向玩家的加速度, 大小与距离成反比
   if (b.from === 'enemy' && game.activeCurses.has('lust')) {
     const dx = player.x - b.x, dy = player.y - b.y;
     const d = Math.hypot(dx, dy);
-    if (d > 1) {
-      const targetA = Math.atan2(dy, dx);
-      const curA = Math.atan2(b.vy, b.vx);
-      let diff = targetA - curA;
-      while (diff > Math.PI) diff -= TAU;
-      while (diff < -Math.PI) diff += TAU;
-      const turn = 3.5 * dt; // 每秒最多旋转 ~200°, 明显追向玩家
-      const na = curA + clamp(diff, -turn, turn);
-      const sp = Math.hypot(b.vx, b.vy);
-      b.vx = Math.cos(na) * sp;
-      b.vy = Math.sin(na) * sp;
+    const R = 160; // 影响半径
+    if (d > 0 && d < R) {
+      const K = 14000;
+      const minD = 25;
+      const acc = K / Math.max(d, minD);
+      b.vx += (dx / d) * acc * dt;
+      b.vy += (dy / d) * acc * dt;
     }
   }
   b.x += b.vx * dt;
@@ -1884,6 +1890,9 @@ const SHOP_ITEMS = [
   { n:'机动核心', ico:'⛢', cost:26,
     good:['移速 +25%'], bad:['子弹大小 -15%'],
     apply: p => { shopAdd.moveSpeedPct += 0.25; p.bulletSize = Math.max(0.1, p.bulletSize - 0.15); recompute(); } },
+  { n:'电磁弹射', ico:'➳', cost:20,
+    good:['弹速 +40%'], bad:[],
+    apply: p => { shopAdd.bulletSpeedPct += 0.40; recompute(); } },
 ];
 
 // 独特道具: 击败 Boss 后才出现, 每个仅可获得一次, 价格大幅高于普通道具
@@ -1969,7 +1978,7 @@ const SHOP_UNIQUE = [
       recompute();
       if (p.shield > p.maxShield) p.shield = p.maxShield;
     } },
-  { id:'devilpower', n:'恶魔之力', ico:'⛧', cost:200, unique:true, minRound:5,
+  { id:'devilpower', n:'恶魔之力', ico:'⛧', cost:200, unique:true, minRound:6,
     good:['深度暴击: 暴击率 ≥ 100% 时溢出再次暴击 (伤害 ×暴伤²)'], bad:['每波开始额外背负一个诅咒'],
     apply: p => { p.deepCrit = true; p.devilPower = true; } },
 ];
@@ -2062,12 +2071,20 @@ function openWaveComboIntro(types) {
   };
 }
 
-function pickNormalShopItems() {
-  const avail = SHOP_ITEMS.filter(it => !it.can || it.can(player));
+function pickNormalShopItems(excludeItems) {
+  const excludeSet = new Set(excludeItems || []);
+  const avail = SHOP_ITEMS.filter(it => !excludeSet.has(it) && (!it.can || it.can(player)));
   const pool = avail.slice();
   const picks = [];
   while (picks.length < 3 && pool.length) {
     picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  }
+  // 池子不够时, 用未排除的备选填补 (理论上 SHOP_ITEMS 数量足够时不会触发)
+  if (picks.length < 3) {
+    const fallback = SHOP_ITEMS.filter(it => (!it.can || it.can(player)));
+    while (picks.length < 3 && fallback.length) {
+      picks.push(fallback.splice(Math.floor(Math.random() * fallback.length), 1)[0]);
+    }
   }
   return picks;
 }
@@ -2129,7 +2146,9 @@ function renderShop() {
     if (player.coin < game.shopRefreshCost) return;
     player.coin -= game.shopRefreshCost;
     game.shopRefreshCost += 10;
-    game.shopNormalPicks = pickNormalShopItems();
+    // 排除当前还在槽位的商品, 避免刷新出相同道具
+    const currentItems = game.shopNormalPicks.filter(p => p);
+    game.shopNormalPicks = pickNormalShopItems(currentItems);
     renderShop();
   };
 
@@ -3223,14 +3242,19 @@ function updateUI() {
   document.getElementById('killNeed').textContent = game.killForLevel;
   document.getElementById('expBar').style.width = clamp(game.killCount / game.killForLevel, 0, 1) * 100 + '%';
   document.getElementById('coin').textContent = player.coin;
-  let extras = '';
-  if (player.projectiles > 1) extras += ` · 弹道 ${player.projectiles}`;
-  if (player.pierce > 0) extras += ` · 穿透 ${player.pierce}`;
-  if (player.homing > 0) extras += ` · 追踪`;
-  if (player.evade > 0) extras += ` · 闪避 ${(player.evade*100).toFixed(0)}%`;
-  document.getElementById('stats').innerHTML =
-    `攻 ${player.atk.toFixed(1)} · 速 ${player.fireRate.toFixed(1)}/s · 弹速 ${Math.round(player.bulletSpeed)}` +
-    `<br>暴 ${(player.critRate*100).toFixed(0)}%/${(player.critDmg*100).toFixed(0)}% · 移速 ${Math.round(player.moveSpeed)}` + extras;
+  // 玩家属性: 一项一行右对齐
+  const lines = [];
+  lines.push(`攻击 ${player.atk.toFixed(1)}`);
+  lines.push(`射速 ${player.fireRate.toFixed(2)}/s`);
+  lines.push(`弹速 ${Math.round(player.bulletSpeed)}`);
+  lines.push(`移速 ${Math.round(player.moveSpeed)}`);
+  lines.push(`暴击 ${(player.critRate*100).toFixed(0)}%`);
+  lines.push(`暴伤 ×${player.critDmg.toFixed(2)}`);
+  if (player.projectiles > 1) lines.push(`<span class="extra">弹道 ${player.projectiles}</span>`);
+  if (player.pierce > 0) lines.push(`<span class="extra">穿透 ${player.pierce}</span>`);
+  if (player.homing > 0) lines.push(`<span class="extra">追踪</span>`);
+  if (player.evade > 0) lines.push(`<span class="extra">闪避 ${(player.evade*100).toFixed(0)}%</span>`);
+  document.getElementById('stats').innerHTML = lines.map(s => `<div>${s}</div>`).join('');
   // 暂停按钮仅在战斗 / 已暂停 / 倒计时 时显示
   const showPause = game.state === 'playing' || game.state === 'collecting' || game.state === 'paused' || game.state === 'resuming';
   pauseBtn.classList.toggle('show', showPause);
