@@ -443,6 +443,8 @@ const player = {
   luckyCoins: false,
   // 恶魔契约: 1 HP 且无盾时全面强化, devilContractActive 跟踪状态以便切换 +2 弹道
   devilContract: false, devilContractActive: false,
+  // 镭射哨兵: 双无人机, 各 1s 发射一次 200px 内最近敌人的射线
+  sentinels: false, sentinelDrones: null,
   // 虚无形态: voidActiveT 当前 5 秒无敌剩余, voidCooldownT 30 秒冷却剩余
   voidForm: false, voidActiveT: 0, voidCooldownT: 0,
   deepCrit: false, devilPower: false,
@@ -545,75 +547,178 @@ function updateShockwaves(dt) {
 function updateGuardian(dt) {
   if (!player.guardian) return;
   const g = player.guardian;
-  g.angle += 5.5 * dt;
-  const gx = player.x + Math.cos(g.angle) * 60;
-  const gy = player.y + Math.sin(g.angle) * 60;
+  g.angle += 3.8 * dt;
+  const radius = 75;
   const gr = 14;
-  g.gx = gx; g.gy = gy;
-  // 消敌弹
-  for (const b of bullets) {
-    if (b.from !== 'enemy' || b.dead) continue;
-    if (Math.hypot(b.x - gx, b.y - gy) < gr + b.r) {
-      b.dead = true;
-      addHitParticles(b.x, b.y);
+  // 两颗光球对位旋转 (相差 π), 共享 hitMap 保证 0.25s 冷却仍按敌人计
+  g.orbs = [
+    { x: player.x + Math.cos(g.angle) * radius, y: player.y + Math.sin(g.angle) * radius },
+    { x: player.x + Math.cos(g.angle + Math.PI) * radius, y: player.y + Math.sin(g.angle + Math.PI) * radius },
+  ];
+  for (const orb of g.orbs) {
+    const gx = orb.x, gy = orb.y;
+    // 消敌弹
+    for (const b of bullets) {
+      if (b.from !== 'enemy' || b.dead) continue;
+      if (Math.hypot(b.x - gx, b.y - gy) < gr + b.r) {
+        b.dead = true;
+        addHitParticles(b.x, b.y);
+      }
     }
-  }
-  // 撞敌人
-  for (const e of enemies) {
-    if (e.dead || e.invuln === true || e.invuln > 0) continue;
-    if (Math.hypot(e.x - gx, e.y - gy) < gr + e.r) {
-      // 镜像: 光球碰到直接清盾或杀死, 不走攻击力伤害
-      if (e.type === 'mirror') {
-        if (e.shield > 0) {
-          e.shield = 0;
-          e.invuln = e.invulnT;
-          e.shieldDelay = e.shieldRegenDelayBase;
-          e.shieldRegenT = 0;
+    // 撞敌人
+    for (const e of enemies) {
+      if (e.dead || e.invuln === true || e.invuln > 0) continue;
+      if (Math.hypot(e.x - gx, e.y - gy) < gr + e.r) {
+        if (e.type === 'mirror') {
+          if (e.shield > 0) {
+            e.shield = 0;
+            e.invuln = e.invulnT;
+            e.shieldDelay = e.shieldRegenDelayBase;
+            e.shieldRegenT = 0;
+            addHitParticles(gx, gy);
+          } else {
+            e.dead = true; e.killed = true;
+            addExplosion(e.x, e.y, e.color, 28);
+            game.shake = Math.max(game.shake, 0.15);
+          }
+          continue;
+        }
+        const last = g.hitMap.get(e) || -999;
+        if (game.time - last > 0.25) {
+          g.hitMap.set(e, game.time);
+          // 伤害 = 玩家 1 秒理论 DPS (atk × 射速 × 弹道数)
+          const dmg = player.atk * player.fireRate * Math.max(1, player.projectiles);
+          e.hp -= dmg;
+          floats.push({ x: gx, y: gy - 6, t: 0.4, life: 0.4, txt: Math.ceil(dmg), color:'#fff', size:11 });
           addHitParticles(gx, gy);
-        } else {
-          e.dead = true; e.killed = true;
-          addExplosion(e.x, e.y, e.color, 28);
-          game.shake = Math.max(game.shake, 0.15);
-        }
-        continue;
-      }
-      const last = g.hitMap.get(e) || -999;
-      if (game.time - last > 0.25) {
-        g.hitMap.set(e, game.time);
-        // 伤害 = 玩家 1 秒理论 DPS (atk × 射速 × 弹道数)
-        const dmg = player.atk * player.fireRate * Math.max(1, player.projectiles);
-        e.hp -= dmg;
-        floats.push({ x: gx, y: gy - 6, t: 0.4, life: 0.4, txt: Math.ceil(dmg), color:'#fff', size:11 });
-        addHitParticles(gx, gy);
-        if (e.hp <= 0) {
-          e.dead = true; e.killed = true;
-          addExplosion(e.x, e.y, e.color, e.boss ? 40 : 12);
-          game.shake = e.boss ? 0.6 : Math.max(game.shake, 0.05);
+          if (e.hp <= 0) {
+            e.dead = true; e.killed = true;
+            addExplosion(e.x, e.y, e.color, e.boss ? 40 : 12);
+            game.shake = e.boss ? 0.6 : Math.max(game.shake, 0.05);
+          }
         }
       }
     }
   }
-  // 偶尔清掉死亡敌人引用避免 Map 增长
   if (Math.random() < 0.05) {
     for (const e of g.hitMap.keys()) if (e.dead) g.hitMap.delete(e);
   }
 }
 
 function drawGuardian() {
-  if (!player.guardian) return;
-  const g = player.guardian;
-  if (g.gx === undefined) return;
-  const gx = g.gx, gy = g.gy;
-  ctx.save();
-  const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, 24);
-  grad.addColorStop(0, '#fff');
-  grad.addColorStop(0.35, '#fc8');
-  grad.addColorStop(1, 'rgba(255, 200, 100, 0)');
-  ctx.fillStyle = grad;
-  ctx.beginPath(); ctx.arc(gx, gy, 24, 0, TAU); ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.arc(gx, gy, 8, 0, TAU); ctx.fill();
-  ctx.restore();
+  if (!player.guardian || !player.guardian.orbs) return;
+  for (const orb of player.guardian.orbs) {
+    const gx = orb.x, gy = orb.y;
+    ctx.save();
+    // 光晕 (压缩到碰撞半径附近, 强化"实体边界"感)
+    const grad = ctx.createRadialGradient(gx, gy, 0, gx, gy, 16);
+    grad.addColorStop(0, 'rgba(255, 230, 160, 0.85)');
+    grad.addColorStop(0.7, 'rgba(255, 200, 100, 0.4)');
+    grad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(gx, gy, 16, 0, TAU); ctx.fill();
+    // 实心球体 (= 碰撞半径 14)
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(gx, gy, 9, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255, 200, 80, 0.85)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(gx, gy, 14, 0, TAU); ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ============== 镭射哨兵 ==============
+const SENTINEL_RANGE = 200;
+const SENTINEL_FIRE_INTERVAL = 1.0;
+const SENTINEL_FLASH_DUR = 0.18;
+function initSentinels() {
+  player.sentinelDrones = [
+    { x: player.x - 30, y: player.y, fireT: 0.4, flashT: 0, flashX: 0, flashY: 0 },
+    { x: player.x + 30, y: player.y, fireT: 0.9, flashT: 0, flashX: 0, flashY: 0 },
+  ];
+}
+function updateSentinels(dt) {
+  if (!player.sentinels) return;
+  if (!player.sentinelDrones) initSentinels();
+  const drones = player.sentinelDrones;
+  const offsets = [-30, 30];
+  for (let i = 0; i < drones.length; i++) {
+    const d = drones[i];
+    // 跟随玩家身侧 (lerp 平滑跟随, 略带惯性)
+    const tx = player.x + offsets[i];
+    const ty = player.y + 4;
+    d.x += (tx - d.x) * 8 * dt;
+    d.y += (ty - d.y) * 8 * dt;
+    // 距玩家上限: 避免高速移动时哨兵被甩到屏幕外
+    const dx = d.x - player.x, dy = d.y - player.y;
+    const dd = Math.hypot(dx, dy);
+    const maxLag = 70;
+    if (dd > maxLag) {
+      d.x = player.x + dx / dd * maxLag;
+      d.y = player.y + dy / dd * maxLag;
+    }
+    d.fireT -= dt;
+    if (d.flashT > 0) d.flashT = Math.max(0, d.flashT - dt);
+    if (d.fireT <= 0 && game.state === 'playing') {
+      // 200px 内独立选最近敌人 (跳过免疫 / 警示 / 镜像)
+      let best = null, bd2 = SENTINEL_RANGE * SENTINEL_RANGE;
+      for (const e of enemies) {
+        if (e.dead || e.warningT > 0) continue;
+        if (e.invuln === true || e.invuln > 0) continue;
+        if (e.type === 'mirror') continue;
+        const dx = e.x - d.x, dy = e.y - d.y;
+        const dist2 = dx * dx + dy * dy;
+        if (dist2 < bd2) { bd2 = dist2; best = e; }
+      }
+      if (best) {
+        d.fireT = SENTINEL_FIRE_INTERVAL;
+        d.flashT = SENTINEL_FLASH_DUR;
+        d.flashX = best.x;
+        d.flashY = best.y;
+        hitEnemy(best, {
+          x: best.x, y: best.y - 6,
+          dmg: player.atk, crit: false, critCount: 0,
+          from: 'player',
+        });
+      } else {
+        // 无目标时下一帧继续扫描 (不浪费冷却)
+        d.fireT = 0.05;
+      }
+    }
+  }
+}
+function drawSentinels() {
+  if (!player.sentinels || !player.sentinelDrones) return;
+  for (const d of player.sentinelDrones) {
+    // 激光线段 (淡出)
+    if (d.flashT > 0) {
+      const a = clamp(d.flashT / SENTINEL_FLASH_DUR, 0, 1);
+      ctx.save();
+      ctx.strokeStyle = `rgba(180, 240, 255, ${0.55 * a})`;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.flashX, d.flashY); ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.95 * a})`;
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.flashX, d.flashY); ctx.stroke();
+      ctx.restore();
+    }
+    // 无人机本体: 瘦长蓝菱形 + 中心细红十字
+    ctx.save();
+    ctx.translate(d.x, d.y);
+    ctx.fillStyle = '#cce8ff';
+    ctx.beginPath();
+    ctx.moveTo(0, -10); ctx.lineTo(5, 0); ctx.lineTo(0, 10); ctx.lineTo(-5, 0);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#3a6c98';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    // 中心红色十字 (横窄, 竖长 — 与菱形长宽比一致)
+    ctx.fillStyle = '#ff4858';
+    ctx.fillRect(-2.5, -0.4, 5, 0.8);
+    ctx.fillRect(-0.4, -5, 0.8, 10);
+    ctx.restore();
+  }
 }
 
 function drawShockwaves() {
@@ -699,13 +804,10 @@ function rollInitialStats() {
   player.laserPhase = 'charge'; player.laserPhaseT = 0; player.laserTickT = 0; player.laserPath = null; player.laserFlashT = 0;
   player.absoluteField = false; player.fieldTickT = 0;
   player.missileLauncher = false; player.missileT = 0;
-  // [测试] 开局自带超能光束. 正式版删除以下三行
-  player.cyclops = true; player.cyclopsAtkMul = 1;
-  player.uniqueOwned['cyclops'] = true;
-  player.laserPhase = 'charge'; player.laserPhaseT = 0; player.laserTickT = 0;
   player.timeRift = false;
   player.luckyCoins = false;
   player.devilContract = false; player.devilContractActive = false;
+  player.sentinels = false; player.sentinelDrones = null;
   player.voidForm = false; player.voidActiveT = 0; player.voidCooldownT = 0;
   player.deepCrit = false; player.devilPower = false;
   player.r = 13;
@@ -2502,8 +2604,12 @@ const SHOP_UNIQUE = [
     good:['每击杀 30 个敌人', '恢复 1 格生命'], bad:[],
     apply: p => { p.killHealEnabled = true; } },
   { id:'guardian', n:'神圣守护', ico:'✦', cost:140, unique:true,
-    good:['召唤守护光球, 消除接触的敌方子弹, 撞击敌人造成基于 DPS 的伤害'], bad:[],
+    good:['召唤两颗对位旋转的守护光球, 消除接触的敌方子弹, 撞击敌人造成基于 DPS 的伤害'], bad:[],
     apply: p => { p.guardian = { angle: 0, hitMap: new Map() }; } },
+  { id:'sentinel', n:'镭射哨兵', ico:'⌬', cost:130, unique:true,
+    good:['召唤两个发射短程射线的无人机'], bad:[],
+    can: p => !p.sentinels,
+    apply: p => { p.sentinels = true; initSentinels(); } },
   { id:'psybullet', n:'灵能子弹', ico:'✺', cost:180, unique:true,
     good:['追踪 +0.6'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
     can: p => p.homing < 2 && !p.bulletParry,
@@ -3202,6 +3308,7 @@ function update(dt) {
   tickBurns(dt);
   refreshDevilContract();
   updateGuardian(dt);
+  updateSentinels(dt);
 
   // 命中
   for (const b of bullets) {
@@ -3494,6 +3601,7 @@ function draw() {
   drawShockwaves();
   drawMissileFlashes();
   drawGuardian();
+  drawSentinels();
   drawPlayerLaser();
   for (const b of bullets) if (b.from === 'enemy') drawBullet(b);
   // 己方飞机最后绘制, 始终在所有弹幕之上
