@@ -2358,6 +2358,7 @@ function collideKillBoss(b) {
 
 // 火焰附加: 给敌人叠加 n 层燃烧 (默认无衰减, 每 0.5 秒每层 1 dmg)
 // 镜像分身免疫. 原初火焰: 层数 cap = 200 × 当前轮数, 叠层时额外触发一次燃烧脉冲
+// 燃烧基础节拍, 实际节拍 = BURN_TICK / (1 + ln(stacks)) — 层数越多触发越快
 const BURN_TICK = 0.5;
 function applyBurn(e, n) {
   if (!e || e.dead || e.type === 'mirror') return;
@@ -2377,13 +2378,15 @@ function applyBurn(e, n) {
     });
   }
 }
-// 每帧给所有有燃烧层数的敌人累加计时, 满 BURN_TICK 秒结算一次伤害 = 层数
+// 每帧给所有有燃烧层数的敌人累加计时, 满 interval 秒结算一次伤害 = 层数.
+// interval = BURN_TICK / (1 + ln(stacks)). 层数越多触发越频繁.
 function tickBurns(dt) {
   for (const e of enemies) {
     if (!e.burn || e.dead) continue;
     e.burnTickT += dt;
-    while (e.burnTickT >= BURN_TICK) {
-      e.burnTickT -= BURN_TICK;
+    const interval = BURN_TICK / (1 + Math.log(Math.max(1, e.burn)));
+    while (e.burnTickT >= interval) {
+      e.burnTickT -= interval;
       if (e.invuln === true || e.invuln > 0 || e.warningT > 0) continue;
       hitEnemy(e, {
         x: e.x, y: e.y - 6,
@@ -2617,7 +2620,7 @@ const SHOP_ITEMS = [
     good:['弹速 +40%'], bad:[],
     apply: p => { shopAdd.bulletSpeedPct += 0.40; recompute(); } },
   { n:'火焰附加', ico:'🔥', cost:25,
-    good:['命中敌人时附加一层可无限叠加的燃烧'], bad:[],
+    good:['命中敌人时附加一层可无限叠加的燃烧, 伤害频率随层数提升'], bad:[],
     apply: p => { p.burnStacks += 1; } },
 ];
 
