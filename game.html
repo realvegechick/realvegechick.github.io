@@ -586,16 +586,14 @@ function updateGuardian(dt) {
         const last = g.hitMap.get(e) || -999;
         if (game.time - last > 0.25) {
           g.hitMap.set(e, game.time);
-          // 伤害 = 玩家 1 秒理论 DPS (atk × 射速 × 弹道数)
+          // 接触伤害不暴击 (吃攻速 + 弹道两个乘区, 与镭射哨兵的暴击/暴伤路线区分)
           const dmg = player.atk * player.fireRate * Math.max(1, player.projectiles);
-          e.hp -= dmg;
-          floats.push({ x: gx, y: gy - 6, t: 0.4, life: 0.4, txt: Math.ceil(dmg), color:'#fff', size:11 });
-          addHitParticles(gx, gy);
-          if (e.hp <= 0) {
-            e.dead = true; e.killed = true;
-            addExplosion(e.x, e.y, e.color, e.boss ? 40 : 12);
-            game.shake = e.boss ? 0.6 : Math.max(game.shake, 0.05);
-          }
+          hitEnemy(e, {
+            x: gx, y: gy - 6,
+            dmg, crit: false, critCount: 0,
+            from: 'player',
+          });
+          if (player.burnStacks > 0) applyBurn(e, player.burnStacks);
         }
       }
     }
@@ -675,11 +673,22 @@ function updateSentinels(dt) {
         d.flashT = SENTINEL_FLASH_DUR;
         d.flashX = best.x;
         d.flashY = best.y;
+        // 哨兵射线允许暴击 / 深度暴击, 跟玩家暴击线挂钩
+        let cc;
+        if (player.deepCrit) {
+          const full = Math.floor(player.critRate);
+          const frac = player.critRate - full;
+          cc = full + (Math.random() < frac ? 1 : 0);
+        } else {
+          cc = Math.random() < player.critRate ? 1 : 0;
+        }
+        const dmg = player.atk * Math.pow(player.critDmg, cc);
         hitEnemy(best, {
           x: best.x, y: best.y - 6,
-          dmg: player.atk, crit: false, critCount: 0,
+          dmg, crit: cc > 0, critCount: cc,
           from: 'player',
         });
+        if (player.burnStacks > 0) applyBurn(best, player.burnStacks);
       } else {
         // 无目标时下一帧继续扫描 (不浪费冷却)
         d.fireT = 0.05;
@@ -1929,6 +1938,7 @@ function updateAbsoluteField(dt) {
       dmg: player.atk, crit: false, critCount: 0,
       from: 'player',
     });
+    if (player.burnStacks > 0) applyBurn(e, player.burnStacks);
   }
 }
 
@@ -2236,11 +2246,11 @@ function hitEnemy(e, b) {
     addExplosion(e.x, e.y, e.color, e.boss ? 50 : 14);
     game.shake = e.boss ? 0.7 : Math.max(game.shake, 0.06);
     if (e.boss) {
-      // boss 死亡: 召唤的敌人立即消失, 分裂机不分裂、不掉金、不计经验
+      // boss 死亡: 场上所有其他敌人立即消失 (不分裂, 不掉金, 不计经验)
       for (const o of enemies) {
-        if (o.summoned && !o.dead) {
+        if (o !== e && !o.dead) {
           o.dead = true;
-          o.killed = false; // 防 cleanup 进入分裂/经验/金币逻辑
+          o.killed = false;
           addExplosion(o.x, o.y, o.color, 6);
         }
       }
@@ -2253,7 +2263,7 @@ function collideKill() {
   if (player.invuln > 0) return;
   if (player.shield > 0) {
     player.shield = 0;
-    player.shieldDelay = player.shieldRegenDelayBase * 1.5 * ((player.devilContract && player.hp === 1 && player.shield === 0) ? 2 : 1);
+    player.shieldDelay = player.shieldRegenDelayBase * 1.5 * ((player.devilContract && player.hp === 1) ? 2 : 1);
     player.shieldRegenT = 0;
     let inv = game.activeCurses.has('pride') ? 0 : 0.8;
     game.shake = 0.45;
@@ -2267,7 +2277,7 @@ function collideKill() {
   } else {
     // 虚无形态救援: 优先于殉爆 (无盾撞机本应死, 这里硬保下来)
     if (tryVoidSave()) {
-      player.shieldDelay = player.shieldRegenDelayBase * ((player.devilContract && player.hp === 1 && player.shield === 0) ? 2 : 1);
+      player.shieldDelay = player.shieldRegenDelayBase * ((player.devilContract && player.hp === 1) ? 2 : 1);
       player.shieldRegenT = 0;
       if (player.shockwaveOnHit) spawnShockwave(player.x, player.y, 220);
       return;
@@ -2301,7 +2311,7 @@ function collideKill() {
     const dmg = game.activeCurses.has('wrath') ? 2 : 1;
     player.hp -= dmg;
     if (player.devilContract) refreshDevilContract();
-    player.shieldDelay = player.shieldRegenDelayBase * ((player.devilContract && player.hp === 1 && player.shield === 0) ? 2 : 1);
+    player.shieldDelay = player.shieldRegenDelayBase * ((player.devilContract && player.hp === 1) ? 2 : 1);
     player.shieldRegenT = 0;
     let inv = game.activeCurses.has('pride') ? 0 : 0.8;
     game.shake = 0.5;
@@ -2333,6 +2343,8 @@ function collideKillBoss(b) {
 const BURN_TICK = 0.5;
 function applyBurn(e, n) {
   if (!e || e.dead || e.type === 'mirror') return;
+  // 免疫状态 (boss 入场 / 二阶段过场 / 拦截机警示) 不能被附加燃烧
+  if (e.invuln === true || e.invuln > 0 || e.warningT > 0) return;
   const cap = player.primalFire ? 200 * game.round : Infinity;
   // 恶魔契约: 1 HP 且无盾时燃烧附加最终修正 +5
   if (player.devilContract && player.hp === 1 && player.shield === 0) n += 5;
@@ -2440,7 +2452,7 @@ function damagePlayer() {
     if (player.devilContract) refreshDevilContract();
     floats.push({ x: player.x, y: player.y - 12, t: 0.55, life: 0.55, txt: '-' + remaining, color: '#f44', size: 14 });
   }
-  player.shieldDelay = player.shieldRegenDelayBase * ((player.devilContract && player.hp === 1 && player.shield === 0) ? 2 : 1);
+  player.shieldDelay = player.shieldRegenDelayBase * ((player.devilContract && player.hp === 1) ? 2 : 1);
   player.shieldRegenT = 0;
   // 排斥力场: 受到伤害即触发冲击波, 并把受击无敌延长到 1.0 秒
   let baseInv = game.activeCurses.has('pride') ? 0 : 0.8;
@@ -2475,7 +2487,7 @@ const LEVEL_OPTIONS = [
     desc: () => {
       const cur = player.evade;
       const nxt = Math.min(0.80, cur + 0.06);
-      return `+6%  上限 80%   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
+      return `+6% (上限 80%)   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
     apply: () => { player.evade = Math.min(0.80, player.evade + 0.06); } },
   { n:'移速', icon:'✦',
@@ -2568,7 +2580,7 @@ const SHOP_ITEMS = [
       p.shield = p.maxShield;
     } },
   { n:'闪避装置', ico:'▣', cost:33,
-    good:['闪避 +8%  上限 80%'], bad:[],
+    good:['闪避 +8% (上限 80%)'], bad:[],
     apply: p => { p.evade = Math.min(0.80, p.evade + 0.08); } },
   { n:'暴击核心', ico:'✸', cost:40,
     good:['暴击率 +10%', '暴击伤害 +30%'], bad:[],
@@ -2587,7 +2599,7 @@ const SHOP_ITEMS = [
     good:['弹速 +40%'], bad:[],
     apply: p => { shopAdd.bulletSpeedPct += 0.40; recompute(); } },
   { n:'火焰附加', ico:'🔥', cost:25,
-    good:['子弹命中时为敌人附加一层可无限叠加的燃烧'], bad:[],
+    good:['命中敌人时附加一层可无限叠加的燃烧'], bad:[],
     apply: p => { p.burnStacks += 1; } },
 ];
 
@@ -2607,7 +2619,7 @@ const SHOP_UNIQUE = [
     good:['召唤两颗对位旋转的守护光球, 消除接触的敌方子弹, 撞击敌人造成基于 DPS 的伤害'], bad:[],
     apply: p => { p.guardian = { angle: 0, hitMap: new Map() }; } },
   { id:'sentinel', n:'镭射哨兵', ico:'⌬', cost:130, unique:true,
-    good:['召唤两个发射短程射线的无人机'], bad:[],
+    good:['召唤两个发射短程射线的无人机 (可暴击)'], bad:[],
     can: p => !p.sentinels,
     apply: p => { p.sentinels = true; initSentinels(); } },
   { id:'psybullet', n:'灵能子弹', ico:'✺', cost:180, unique:true,
@@ -2685,11 +2697,11 @@ const SHOP_UNIQUE = [
     } },
   { id:'missile', n:'死神飞弹', ico:'☠', cost:160, unique:true,
     good:['每 3 秒发射 2 枚飞弹, 造成基于攻击力的范围伤害'],
-    bad:['无护盾遭到撞击将产生殉爆, 直接死亡'],
+    bad:['无护盾遭到撞击将直接殉爆'],
     can: p => !p.missileLauncher,
     apply: p => { p.missileLauncher = true; p.missileT = 0; } },
   { id:'absfield', n:'绝对领域', ico:'⊛', cost:150, unique:true,
-    good:['领域内敌人每 0.5 秒受到 1 次攻击伤害', '领域内所有子弹速度减半', '领域半径 = 拾取金币范围 (不随贪婪扩大)'], bad:[],
+    good:['领域内敌人每 0.5 秒受到 1 次攻击伤害', '领域内所有子弹速度减半'], bad:[],
     can: p => !p.absoluteField,
     apply: p => { p.absoluteField = true; p.fieldTickT = 0; } },
   { id:'primalfire', n:'原初火焰', ico:'🜂', cost:150, unique:true,
@@ -2703,7 +2715,7 @@ const SHOP_UNIQUE = [
     apply: p => { p.luckyCoins = true; } },
   { id:'devilcontract', n:'恶魔契约', ico:'⛓', cost:130, unique:true,
     good:['1 HP 且无盾时: 攻击 +5、射速 +5、燃烧 +5、弹道 +2 (最终修正)'],
-    bad:['1 HP 且无盾时: 护盾恢复延迟 ×2'],
+    bad:['1 HP 时: 护盾恢复延迟 ×2'],
     can: p => !p.devilContract,
     apply: p => { p.devilContract = true; refreshDevilContract(); } },
   { id:'devilpower', n:'诅咒之力', ico:'⛧', cost:200, unique:true, minRound:6,
@@ -3509,7 +3521,8 @@ function update(dt) {
     const e = enemies[i];
     if (e.dead) {
       if (e.killed) {
-        if (!e.boss && !e.summoned) game.killCount++;
+        if (e.boss) game.killCount += 20;
+        else if (!e.summoned) game.killCount++;
         // 罪恶快感: 累计击杀, 每 30 个回 1 格生命
         if (player.killHealEnabled) {
           player.killHealCounter++;
