@@ -91,6 +91,50 @@
   }
   .stats-line .extra { color:#9fc4ee; }
 
+  /* 已持有神器 chip 行: 经验条下方, 长按显示 tooltip */
+  .owned-uniques {
+    display: flex; gap: 3px; flex-wrap: wrap;
+    margin-top: 3px;
+    pointer-events: auto;
+    max-width: clamp(120px, 32vmin, 200px);
+  }
+  .owned-uniques .chip {
+    font-size: clamp(11px, 2.4vmin, 14px);
+    width: clamp(16px, 3.6vmin, 22px);
+    height: clamp(16px, 3.6vmin, 22px);
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(15, 22, 36, 0.7);
+    border: 1px solid rgba(255, 200, 80, 0.5);
+    border-radius: 3px;
+    color: #ffd06a;
+    cursor: pointer;
+    user-select: none; -webkit-user-select: none;
+    touch-action: manipulation;
+  }
+  .owned-uniques .chip:active { background: rgba(40, 60, 90, 0.9); }
+  .unique-tooltip {
+    position: fixed;
+    background: #10101e;
+    border: 2px solid #ffd06a;
+    border-radius: 6px;
+    padding: 8px 12px;
+    z-index: 100;
+    max-width: 220px;
+    font-size: clamp(10px, 2.2vmin, 12px);
+    pointer-events: none;
+    box-shadow: 0 0 14px rgba(0,0,0,0.7);
+    display: none;
+    line-height: 1.45;
+  }
+  .unique-tooltip.show { display: block; }
+  .unique-tooltip .nm {
+    color: #ffd06a; font-weight: bold;
+    margin-bottom: 4px;
+    font-size: clamp(11px, 2.5vmin, 13px);
+  }
+  .unique-tooltip .g { color: #a4dfff; }
+  .unique-tooltip .b { color: #ff8a8a; }
+
   /* 弹窗 */
   .overlay {
     position:absolute; inset:0;
@@ -254,6 +298,7 @@
       <div>第 <span id="round">1</span> 轮 · 第 <span id="wave">1</span> 波</div>
       <div>等级 <span id="level">1</span> · 经验 <span id="kill">0</span>/<span id="killNeed">5</span></div>
       <div class="bar exp"><div id="expBar"></div></div>
+      <div class="owned-uniques" id="ownedUniques"></div>
     </div>
     <div class="right">
       <div>金币 <span id="coin">0</span></div>
@@ -262,6 +307,7 @@
   </div>
   <button id="pauseBtn" type="button">⏸</button>
   <div class="overlay show" id="overlay"></div>
+  <div class="unique-tooltip" id="uniqueTooltip"></div>
 </div>
 <script>
 "use strict";
@@ -351,12 +397,12 @@ function gapForThreat(threat) {
 
 // 弹道增加的统一入口: 独眼形态下不实际加弹道, 每个弹道结算为攻击 ×1.5 (独立乘区)
 function grantProjectile(p, n) {
+  // 弹道照常增加 (镜像分身会继承). 同时拥有超能光束时, 每个新弹道再叠加 1.4 攻击倍率
   if (p.cyclops) {
     p.cyclopsAtkMul *= Math.pow(1.4, n);
     recompute();
-  } else {
-    p.projectiles += n;
   }
+  p.projectiles += n;
 }
 
 // 组合波抽取的敌人种类数随轮次递增
@@ -375,7 +421,7 @@ const CURSES = [
   { id:'wrath',    n:'愤怒', desc:'受伤翻倍' },
   { id:'greed',    n:'贪婪', desc:'吸金范围 ×2; 主动拾取扣钱, 飞出屏幕的金币反而进账' },
   { id:'lust',     n:'色欲', desc:'敌弹略微被玩家吸引' },
-  { id:'envy',     n:'嫉妒', desc:'消灭所有敌人后, 召唤一个继承玩家属性的镜像分身' },
+  { id:'envy',     n:'嫉妒', desc:'消灭所有敌人后, 召唤一个镜像, 继承你的基础属性 (包括金币!)' },
 ];
 
 // 经验需求随等级线性增加: 5, 7, 9, 11...
@@ -449,6 +495,10 @@ const player = {
   timeRift: false,
   // 幸运金币: 暴击杀死敌人时, 该敌人掉落的金币自动拾取
   luckyCoins: false,
+  // 全视之眼: 所有三选一改为四选一 (升级 / 商店 / 神器槽位 / boss 后神器)
+  allSeeingEye: false,
+  // 除厄: 永久排除的诅咒 id 集合
+  bannedCurses: null,
   // 恶魔契约: 1 HP 且无盾时全面强化, devilContractActive 跟踪状态以便切换 +2 弹道
   devilContract: false, devilContractActive: false,
   // 镭射哨兵: 双无人机, 各 1s 发射一次 200px 内最近敌人的射线
@@ -460,7 +510,8 @@ const player = {
 
 function recompute() {
   player.maxHp = Math.max(0, base.maxHp + bonus.maxHp);
-  player.maxShield = Math.max(0, base.maxShield + bonus.maxShield);
+  // 护盾上限允许为负 — 表示"亏空", 后续 +护盾 要先填平才能真正获得格子
+  player.maxShield = base.maxShield + bonus.maxShield;
   // final = (base + 升级累加) * (1 + 普通商店加性) * 独特乘区 * (独眼乘区)
   player.atk = (base.atk + bonus.atk) * Math.max(0, 1 + shopAdd.atkPct) * shopMul.atk * (player.cyclopsAtkMul || 1);
   player.fireRate = Math.min(20, (base.fireRate + bonus.fireRate) * Math.max(0.1, 1 + shopAdd.fireRatePct) * shopMul.fireRate);
@@ -480,7 +531,8 @@ function recompute() {
   player.r = Math.round(r);
   player.magnetRange = (player.baseMagnetRange || 90) * (game.activeCurses.has('greed') ? 2 : 1);
   if (player.hp > player.maxHp) player.hp = player.maxHp;
-  if (player.shield > player.maxShield) player.shield = player.maxShield;
+  // shield 钳制到 [0, maxShield], 当 maxShield 为负时直接归 0
+  player.shield = Math.max(0, Math.min(player.shield, player.maxShield));
   // 恶魔契约: 1 HP 且无盾时直接附加最终修正, 不受任何乘区影响. 受 fireRate 隐形上限约束
   if (player.devilContract && player.hp === 1 && player.shield === 0) {
     player.atk += 5;
@@ -823,6 +875,8 @@ function rollInitialStats() {
   player.missileLauncher = false; player.missileT = 0;
   player.timeRift = false;
   player.luckyCoins = false;
+  player.allSeeingEye = false;
+  player.bannedCurses = new Set();
   player.devilContract = false; player.devilContractActive = false;
   player.sentinels = false; player.sentinelDrones = null;
   player.voidForm = false; player.voidActiveT = 0; player.voidCooldownT = 0;
@@ -838,7 +892,7 @@ function rollInitialStats() {
   game.stats.shopBought = {};
   recompute();
   player.hp = player.maxHp;
-  player.shield = player.maxShield;
+  player.shield = Math.max(0, player.maxShield);
 }
 
 // ============== 开始界面 ==============
@@ -883,6 +937,19 @@ function startWave() {
   game.spawnTimer = game.spawnQueue.length ? game.spawnQueue[0].gap : 0.5;
   if (player.guardian) player.guardian.hitMap = new Map();
   game.snapshotted = false;
+  // 每波开始前重置玩家技能冷却 / 蓄力
+  player.voidActiveT = 0;
+  player.voidCooldownT = 0;
+  player.missileT = 0;
+  player.fieldTickT = 0;
+  player.laserPhase = 'charge';
+  player.laserPhaseT = 0;
+  player.laserTickT = 0;
+  player.laserFlashT = 0;
+  player.shotCD = 0;
+  if (player.sentinelDrones) {
+    for (const d of player.sentinelDrones) { d.fireT = 0; d.flashT = 0; }
+  }
   // 这波包含的所有种类
   const types = [...new Set(game.spawnQueue.map(s => s.type))];
   const newTypes = types.filter(t => !game.introduced.has(t));
@@ -913,8 +980,13 @@ function startWave() {
 
 // 抽一张诅咒: 牌堆空则重新洗 7 张. 可传 exclude 避免与当波已抽的同 id 重复
 function drawCurse(exclude) {
+  // 移除被除厄禁掉的诅咒
+  const banned = player.bannedCurses;
+  if (banned && banned.size) game.curseDeck = game.curseDeck.filter(id => !banned.has(id));
   if (game.curseDeck.length === 0) {
-    game.curseDeck = CURSES.map(c => c.id);
+    const allowed = CURSES.filter(c => !(banned && banned.has(c.id))).map(c => c.id);
+    if (allowed.length === 0) return null;
+    game.curseDeck = allowed;
     for (let i = game.curseDeck.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [game.curseDeck[i], game.curseDeck[j]] = [game.curseDeck[j], game.curseDeck[i]];
@@ -924,14 +996,19 @@ function drawCurse(exclude) {
     const idx = game.curseDeck.findIndex(id => id !== exclude);
     if (idx >= 0) return game.curseDeck.splice(idx, 1)[0];
   }
-  return game.curseDeck.shift();
+  return game.curseDeck.shift() || null;
 }
 
-// round >= 6 或玩家拥有恶魔之力时抽诅咒, 恶魔之力时抽 2 张不同 id
+// round >= 6 或玩家拥有恶魔之力时抽诅咒, 恶魔之力时抽 2 张不同 id (池子不足则只抽 1)
 function getMaybeCurseCard() {
   if (game.round < 6 && !player.devilPower) return null;
-  const ids = [drawCurse()];
-  if (player.devilPower) ids.push(drawCurse(ids[0]));
+  const first = drawCurse();
+  if (!first) return null;  // 全部被除厄禁掉
+  const ids = [first];
+  if (player.devilPower) {
+    const second = drawCurse(first);
+    if (second) ids.push(second);
+  }
   const curseHtmls = ids.map(id => {
     const curse = CURSES.find(c => c.id === id);
     return `
@@ -1203,7 +1280,8 @@ function bossSummonWave(boss) {
   }
 }
 
-// 嫉妒诅咒召唤的镜像分身: 继承玩家 maxHp/maxShield/fireRate/projectiles
+// 嫉妒诅咒召唤的镜像分身: 继承玩家 maxHp/maxShield/fireRate/projectiles/moveSpeed/bulletSpeed
+// 死亡掉落金币 = 玩家当前金币 (上限 50), 因此玩家越富镜像越值钱
 // 受击与玩家一致 (优先扣盾, 大幅无敌时间). 撞玩家/光球: 双向清盾/即死.
 function spawnMirrorEnemy() {
   const m = {
@@ -1211,12 +1289,12 @@ function spawnMirrorEnemy() {
     r: player.r,
     type: 'mirror',
     // 镜像出场时血盾全满, 只继承玩家上限不继承当前剩余
-    maxHp: Math.max(1, player.maxHp), hp: Math.max(1, player.maxHp),
+    maxHp: player.maxHp, hp: player.maxHp,
     maxShield: player.maxShield, shield: player.maxShield,
-    fireRate: Math.max(0.5, player.fireRate),
-    projectiles: Math.max(1, player.projectiles),
-    moveSpeed: Math.max(150, player.moveSpeed),
-    bulletSpeed: Math.max(200, player.bulletSpeed),
+    fireRate: player.fireRate,
+    projectiles: player.projectiles,
+    moveSpeed: player.moveSpeed,
+    bulletSpeed: player.bulletSpeed,
     color: '#e060c8',
     coin: 0,
     invuln: 2.0,            // 出场无敌 2 秒 (类似 boss 入场)
@@ -1980,7 +2058,9 @@ function drawAbsoluteField() {
 }
 
 // ============== 寻的导弹 ==============
-const MISSILE_INTERVAL = 3.0;
+// 发射间隔 = 9 / fireRate, 即默认攻速 3 时为 3 秒, 攻速越高发射越频繁
+const MISSILE_INTERVAL_BASE = 9.0;
+function missileInterval() { return MISSILE_INTERVAL_BASE / Math.max(0.5, player.fireRate); }
 const MISSILE_INIT_SPEED = 220;
 const MISSILE_ACCEL = 900;       // 沿当前朝向加速 (推进)
 const MISSILE_MAX_SPEED = 520;   // 速度上限, 越低越易跟上目标
@@ -2489,6 +2569,10 @@ function damagePlayer() {
 
 // ============== 升级页 ==============
 // 升级选项: 加性百分比基于 base. 不再提供生命/护盾上限提升。
+// 全视之眼影响所有 N 选一 / 槽位容量
+function pickCount() { return player.allSeeingEye ? 4 : 3; }
+function pickWord() { return player.allSeeingEye ? '四选一' : '三选一'; }
+
 const LEVEL_OPTIONS = [
   { n:'攻击力', icon:'⚔',
     desc: () => {
@@ -2511,6 +2595,13 @@ const LEVEL_OPTIONS = [
       return `+6% (上限 80%)   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
     apply: () => { player.evade = Math.min(0.80, player.evade + 0.06); } },
+  { n:'弹体', icon:'●',
+    desc: () => {
+      const cur = player.bulletSize;
+      const nxt = cur + 0.15;
+      return `弹体 +15%   ${cur.toFixed(2)} → ${nxt.toFixed(2)}`;
+    },
+    apply: () => { player.bulletSize += 0.15; } },
   { n:'移速', icon:'✦',
     desc: () => {
       const cur = player.moveSpeed;
@@ -2538,13 +2629,14 @@ function openLevelup() {
   game.state = 'levelup';
   const pool = LEVEL_OPTIONS.slice();
   const picks = [];
-  for (let i = 0; i < 3 && pool.length; i++) {
+  const n = pickCount();
+  for (let i = 0; i < n && pool.length; i++) {
     picks.push(pool.splice(Math.floor(Math.random()*pool.length), 1)[0]);
   }
   overlay.className = 'overlay show';
   overlay.innerHTML = `
     <div class="title">⚡ 等级 ${game.level} → ${game.level + 1}</div>
-    <div class="subtitle">三选一 · 升级基于初始基础值线性叠加</div>
+    <div class="subtitle">${pickWord()} · 升级基于初始基础值线性叠加</div>
     <div class="cards" id="cards"></div>`;
   const wrap = document.getElementById('cards');
   picks.forEach(p => {
@@ -2574,7 +2666,6 @@ function openLevelup() {
 const SHOP_ITEMS = [
   { n:'多发子弹', ico:'❉', cost:25,
     good:['弹道 +1'], bad:['攻击 ×0.80'],
-    can: p => p.cyclops || p.projectiles < 7,
     apply: p => { grantProjectile(p, 1); shopMul.atk *= 0.80; recompute(); } },
   { n:'集中射击', ico:'│', cost:22,
     good:['扩散 -40%', '暴击率 +10%'], bad:[],
@@ -2598,7 +2689,7 @@ const SHOP_ITEMS = [
       bonus.maxHp -= 1; bonus.maxShield += 1;
       recompute();
       if (p.hp > p.maxHp) p.hp = p.maxHp;
-      p.shield = p.maxShield;
+      p.shield = Math.max(0, p.maxShield);
     } },
   { n:'闪避装置', ico:'▣', cost:33,
     good:['闪避 +8% (上限 80%)'], bad:[],
@@ -2608,7 +2699,6 @@ const SHOP_ITEMS = [
     apply: p => { p.critRate = Math.min(2, p.critRate + 0.10); p.critDmg += 0.30; } },
   { n:'双子弹幕', ico:'❅', cost:40,
     good:['弹道 +2'], bad:['射速 ×0.70'],
-    can: p => p.cyclops || p.projectiles < 6,
     apply: p => { grantProjectile(p, 2); shopMul.fireRate *= 0.70; recompute(); } },
   { n:'大型弹头', ico:'●', cost:25,
     good:['子弹大小 +30%'], bad:['弹速 -15%'],
@@ -2622,6 +2712,10 @@ const SHOP_ITEMS = [
   { n:'火焰附加', ico:'🔥', cost:25,
     good:['命中敌人时附加一层可无限叠加的燃烧, 伤害频率随层数提升'], bad:[],
     apply: p => { p.burnStacks += 1; } },
+  { n:'除厄', ico:'🪬', cost:50,
+    good:['永久排除一种诅咒, 不再遭遇'], bad:[],
+    can: p => p.bannedCurses && p.bannedCurses.size < CURSES.length,
+    apply: p => { requestAnimationFrame(() => openCursePurifyChoice()); } },
 ];
 
 // 独特道具: 击败 Boss 后才出现, 每个仅可获得一次, 价格大幅高于普通道具
@@ -2652,7 +2746,7 @@ const SHOP_UNIQUE = [
       bonus.maxHp -= 1; bonus.maxShield -= 1;
       recompute();
       if (p.hp > p.maxHp) p.hp = p.maxHp;
-      if (p.shield > p.maxShield) p.shield = p.maxShield;
+      if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
   { id:'berserk', n:'暴怒形态', ico:'☢', cost:150, unique:true,
     good:['攻击 ×2.00 (独立)'], bad:['生命上限 -1 格'],
@@ -2667,7 +2761,7 @@ const SHOP_UNIQUE = [
     apply: p => {
       bonus.maxShield -= 1; shopMul.fireRate *= 1.60;
       recompute();
-      if (p.shield > p.maxShield) p.shield = p.maxShield;
+      if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
   { id:'giant', n:'巨人形态', ico:'⛰', cost:80, unique:true,
     good:['生命上限 +2 格', '体型 ×1.5'], bad:[],
@@ -2684,7 +2778,7 @@ const SHOP_UNIQUE = [
       const extra = Math.max(0, p.projectiles - 1);
       p.cyclops = true;
       if (extra > 0) p.cyclopsAtkMul *= Math.pow(1.4, extra);
-      p.projectiles = 1;
+      // 不再重置 projectiles, 嫉妒镜像可以继承玩家原本的弹道数
       p.laserPhase = 'charge'; p.laserPhaseT = 0; p.laserTickT = 0; p.laserFlashT = 0; p.laserPath = null;
       recompute();
     } },
@@ -2701,7 +2795,7 @@ const SHOP_UNIQUE = [
       bonus.maxShield += 2;
       p.shieldRegenDelayBase *= 2;
       recompute();
-      p.shield = p.maxShield;
+      p.shield = Math.max(0, p.maxShield);
     } },
   { id:'timerift', n:'时空断裂', ico:'⌛', cost:130, unique:true,
     good:['闪避触发时立即取消盾恢复延迟', '并暂停所有敌人 / 敌方子弹 0.5 秒'], bad:[],
@@ -2714,10 +2808,10 @@ const SHOP_UNIQUE = [
       p.shieldRegenInterval *= 0.5;
       bonus.maxShield -= 1;
       recompute();
-      if (p.shield > p.maxShield) p.shield = p.maxShield;
+      if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
   { id:'missile', n:'死神飞弹', ico:'☠', cost:160, unique:true,
-    good:['每 3 秒发射 2 枚飞弹, 造成基于攻击力的范围伤害'],
+    good:['发射 2 枚飞弹, 造成基于攻击力的范围伤害 (间隔随攻速缩短)'],
     bad:['无护盾遭到撞击将直接殉爆'],
     can: p => !p.missileLauncher,
     apply: p => { p.missileLauncher = true; p.missileT = 0; } },
@@ -2730,6 +2824,10 @@ const SHOP_UNIQUE = [
     bad:['燃烧层数无法超过 200 × 当前轮数'],
     can: p => !p.primalFire,
     apply: p => { p.primalFire = true; } },
+  { id:'alleye', n:'全视之眼', ico:'👁', cost:130, unique:true, maxRound:5,
+    good:['所有三选一改为四选一 (升级 / 商店 / 神器槽位)'], bad:[],
+    can: p => !p.allSeeingEye,
+    apply: p => { p.allSeeingEye = true; } },
   { id:'lucky', n:'幸运金币', ico:'☘', cost:77, unique:true, maxRound:5,
     good:['暴击杀死敌人时, 该敌人掉落的金币自动拾取'], bad:[],
     can: p => !p.luckyCoins,
@@ -2832,18 +2930,48 @@ function openWaveComboIntro(types) {
   };
 }
 
+// 除厄: 弹出现存诅咒列表, 玩家选一个永久禁用
+function openCursePurifyChoice() {
+  const remaining = CURSES.filter(c => !player.bannedCurses.has(c.id));
+  if (remaining.length === 0) return;
+  overlay.className = 'overlay show';
+  overlay.innerHTML = `
+    <div class="title">🪬 除厄</div>
+    <div class="subtitle">选择一种诅咒, 永久不再出现</div>
+    <div class="cards" id="curseChoices"></div>`;
+  const wrap = document.getElementById('curseChoices');
+  remaining.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'card';
+    el.innerHTML = `<div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">☠</div><div class="nm" style="color:#ff9090">${c.n}</div><div class="ds"><div class="b">${c.desc}</div></div>`;
+    el.onclick = () => {
+      player.bannedCurses.add(c.id);
+      // 牌堆中已存在的同 id 一并清除
+      game.curseDeck = game.curseDeck.filter(id => id !== c.id);
+      // 当前波次已激活的同 id 立即失效
+      if (game.activeCurses.has(c.id)) {
+        game.activeCurses.delete(c.id);
+        recompute();
+      }
+      renderShop();
+    };
+    wrap.appendChild(el);
+  });
+}
+
 function pickNormalShopItems(excludeItems) {
   const excludeSet = new Set(excludeItems || []);
   const avail = SHOP_ITEMS.filter(it => !excludeSet.has(it) && (!it.can || it.can(player)));
   const pool = avail.slice();
   const picks = [];
-  while (picks.length < 3 && pool.length) {
+  const target = pickCount();
+  while (picks.length < target && pool.length) {
     picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   }
-  // 池子不够时, 用未排除的备选填补 (理论上 SHOP_ITEMS 数量足够时不会触发)
-  if (picks.length < 3) {
+  // 池子不够时, 用未排除的备选填补
+  if (picks.length < target) {
     const fallback = SHOP_ITEMS.filter(it => (!it.can || it.can(player)));
-    while (picks.length < 3 && fallback.length) {
+    while (picks.length < target && fallback.length) {
       picks.push(fallback.splice(Math.floor(Math.random() * fallback.length), 1)[0]);
     }
   }
@@ -2856,7 +2984,7 @@ function openShop(isBossClear) {
   game.shopRefreshCost = 10;
   game.shopNormalPicks = pickNormalShopItems();
   // 进入商店时充满护盾, 让玩家以满状态开始下一波
-  player.shield = player.maxShield;
+  player.shield = Math.max(0, player.maxShield);
   player.shieldDelay = 0;
   player.shieldRegenT = 0;
   renderShop();
@@ -2867,7 +2995,7 @@ function renderShop() {
   overlay.className = 'overlay show';
   // 独特槽位: 玩家 uniqueSlots 长度 0-3, 不足补空槽
   const slots = player.uniqueSlots.slice();
-  while (slots.length < 3) slots.push(null);
+  while (slots.length < pickCount()) slots.push(null);
   // 普通商店时, 若下一波是 boss (game.wave 已自增到 wavesPerRound) → 黄字预警
   const bossNext = !isBossClear && game.wave === game.wavesPerRound;
 
@@ -3041,7 +3169,7 @@ function retryWave() {
   if (player.guardian) player.guardian.hitMap = new Map();
   recompute();
   if (player.hp > player.maxHp) player.hp = player.maxHp;
-  if (player.shield > player.maxShield) player.shield = player.maxShield;
+  if (player.shield > player.maxShield) player.shield = Math.max(0, player.maxShield);
   // 关闭 overlay, 进入战斗
   overlay.className = 'overlay';
   overlay.innerHTML = '';
@@ -3066,13 +3194,14 @@ function openUniqueChoice() {
   game.state = 'uniqueChoice';
   const picks = [];
   const pool = avail.slice();
-  for (let i = 0; i < 3 && pool.length; i++) {
+  const n = pickCount();
+  for (let i = 0; i < n && pool.length; i++) {
     picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
   }
   overlay.className = 'overlay show';
   overlay.innerHTML = `
     <div class="title">★ Boss 已被击败</div>
-    <div class="subtitle">三选一解锁神器</div>
+    <div class="subtitle">${pickWord()}解锁神器</div>
     <div class="cards" id="uniqueChoices"></div>`;
   const wrap = document.getElementById('uniqueChoices');
   picks.forEach(p => {
@@ -3086,11 +3215,12 @@ function openUniqueChoice() {
       game.uniqueAnimating = true;
       // 动画前快照: 选中卡的屏幕位置 + 即将被顶替的最早神器
       const sourceRect = el.getBoundingClientRect();
-      const wasFull = player.uniqueSlots.length >= 3;
+      const cap = pickCount();
+      const wasFull = player.uniqueSlots.length >= cap;
       const displacedItem = wasFull ? player.uniqueSlots[0] : null;
       // 状态更新: 推入新神器, 满则 FIFO 顶掉最早
       player.uniqueSlots.push(p);
-      while (player.uniqueSlots.length > 3) player.uniqueSlots.shift();
+      while (player.uniqueSlots.length > cap) player.uniqueSlots.shift();
       // 切到商店页面
       openShop(true);
       // 找到新神器对应的槽位卡 → FLIP: 先回到 sourceRect, 再 transition 到目标位置
@@ -3332,7 +3462,7 @@ function update(dt) {
   if (game.state === 'playing' && player.missileLauncher) {
     player.missileT -= dt;
     if (player.missileT <= 0) {
-      player.missileT = MISSILE_INTERVAL;
+      player.missileT = missileInterval();
       spawnMissile();
     }
   }
@@ -3597,7 +3727,7 @@ function update(dt) {
         // 镜像: 按玩家当前金币动态算 (上限 50)
         let dropAmount;
         if (e.boss) dropAmount = Math.max(0, e.coin - (e.coinDropped || 0));
-        else if (e.type === 'mirror') dropAmount = Math.min(50, Math.max(0, player.coin));
+        else if (e.type === 'mirror') dropAmount = Math.min(200, Math.max(0, player.coin));
         else dropAmount = e.coin;
         spawnCoins(e.x, e.y, dropAmount, !!(player.luckyCoins && e.killedByCrit));
         if (e.boss) spawnHeart(e.x, e.y);
@@ -4308,9 +4438,65 @@ function updateUI() {
   if (player.evade > 0) lines.push(`<span class="extra">闪避 ${(player.evade*100).toFixed(0)}%</span>`);
   if (player.burnStacks > 0) lines.push(`<span class="extra">燃烧 +${player.burnStacks}/命中</span>`);
   document.getElementById('stats').innerHTML = lines.map(s => `<div>${s}</div>`).join('');
+  // 已持有神器 chip 行: 仅当集合变化时重建 (避免每帧 attach 监听)
+  refreshOwnedUniques();
   // 暂停按钮仅在战斗 / 已暂停 / 倒计时 时显示
   const showPause = game.state === 'playing' || game.state === 'collecting' || game.state === 'paused' || game.state === 'resuming';
   pauseBtn.classList.toggle('show', showPause);
+}
+
+let _lastOwnedKey = '';
+function refreshOwnedUniques() {
+  const ownedIds = Object.keys(player.uniqueOwned).filter(id => player.uniqueOwned[id]);
+  const key = ownedIds.sort().join(',');
+  if (key === _lastOwnedKey) return;
+  _lastOwnedKey = key;
+  const el = document.getElementById('ownedUniques');
+  if (!ownedIds.length) { el.innerHTML = ''; return; }
+  el.innerHTML = ownedIds.map(id => {
+    const it = SHOP_UNIQUE.find(u => u.id === id);
+    if (!it) return '';
+    return `<div class="chip" data-uid="${id}">${it.ico}</div>`;
+  }).join('');
+  for (const chip of el.querySelectorAll('.chip')) attachUniqueChipPress(chip);
+}
+
+const _uniqueTooltip = document.getElementById('uniqueTooltip');
+function showUniqueTooltip(chip, id) {
+  const it = SHOP_UNIQUE.find(u => u.id === id);
+  if (!it) return;
+  const goodHtml = (it.good || []).map(g => `<div class="g">${g}</div>`).join('');
+  const badHtml = (it.bad || []).map(b => `<div class="b">${b}</div>`).join('');
+  _uniqueTooltip.innerHTML = `<div class="nm">${it.ico} ${it.n}</div>${goodHtml}${badHtml}`;
+  // 先 show 再测量, 然后根据屏幕宽度反向贴边
+  _uniqueTooltip.classList.add('show');
+  const r = chip.getBoundingClientRect();
+  const tw = _uniqueTooltip.offsetWidth;
+  const th = _uniqueTooltip.offsetHeight;
+  let x = r.left;
+  if (x + tw > window.innerWidth - 6) x = window.innerWidth - tw - 6;
+  let y = r.bottom + 4;
+  if (y + th > window.innerHeight - 6) y = r.top - th - 4;
+  _uniqueTooltip.style.left = Math.max(6, x) + 'px';
+  _uniqueTooltip.style.top = Math.max(6, y) + 'px';
+}
+function hideUniqueTooltip() { _uniqueTooltip.classList.remove('show'); }
+
+function attachUniqueChipPress(chip) {
+  let timer = null;
+  const id = chip.dataset.uid;
+  const start = e => {
+    if (e.cancelable) e.preventDefault();
+    clearTimeout(timer);
+    timer = setTimeout(() => showUniqueTooltip(chip, id), 350);
+  };
+  const end = () => { clearTimeout(timer); hideUniqueTooltip(); };
+  chip.addEventListener('mousedown', start);
+  chip.addEventListener('mouseup', end);
+  chip.addEventListener('mouseleave', end);
+  chip.addEventListener('touchstart', start, { passive: false });
+  chip.addEventListener('touchend', end);
+  chip.addEventListener('touchcancel', end);
 }
 
 // ============== 主循环 ==============
