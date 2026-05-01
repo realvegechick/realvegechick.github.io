@@ -461,14 +461,35 @@ const ctx = cvs.getContext('2d');
 const W = cvs.width, H = cvs.height;
 const overlay = document.getElementById('overlay');
 const bgm = new Audio('./gaming-music-8-bit-console-play-background-intro-theme-278382.mp3');
+bgm.preload = 'auto';
 bgm.loop = true;
 bgm.volume = 0.45;
+bgm.playsInline = true;
+bgm.setAttribute('playsinline', '');
+bgm.setAttribute('webkit-playsinline', '');
 let bgmStarted = false;
 
 function ensureBgm() {
   if (bgmStarted) return;
-  bgm.play().then(() => { bgmStarted = true; }).catch(() => {});
+  bgm.muted = false;
+  const p = bgm.play();
+  if (p && typeof p.then === 'function') {
+    p.then(() => { bgmStarted = true; }).catch(() => {});
+  } else {
+    bgmStarted = true;
+  }
 }
+
+// H5 / 移动端常会拦截首帧播放, 这里用首个用户手势做一次兜底解锁
+['pointerdown', 'touchstart', 'keydown', 'click'].forEach(ev => {
+  document.addEventListener(ev, ensureBgm, { capture: true, passive: true });
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && (game.state === 'playing' || game.state === 'collecting')) ensureBgm();
+});
+window.addEventListener('pageshow', () => {
+  if (game.state === 'playing' || game.state === 'collecting') ensureBgm();
+});
 
 const rand = (a,b) => a + Math.random()*(b-a);
 const randInt = (a,b) => Math.floor(rand(a,b+1));
