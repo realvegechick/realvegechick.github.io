@@ -468,15 +468,23 @@ bgm.playsInline = true;
 bgm.setAttribute('playsinline', '');
 bgm.setAttribute('webkit-playsinline', '');
 let bgmStarted = false;
+let bgmPlayLock = false;
 
 function ensureBgm() {
-  if (bgmStarted) return;
+  if (document.hidden) return;
+  if (!bgm.paused && !bgm.ended) {
+    bgmStarted = true;
+    return;
+  }
+  if (bgmPlayLock) return;
+  bgmPlayLock = true;
   bgm.muted = false;
   const p = bgm.play();
   if (p && typeof p.then === 'function') {
-    p.then(() => { bgmStarted = true; }).catch(() => {});
+    p.then(() => { bgmStarted = true; }).catch(() => {}).finally(() => { bgmPlayLock = false; });
   } else {
     bgmStarted = true;
+    bgmPlayLock = false;
   }
 }
 
@@ -4817,6 +4825,7 @@ let lastTime = performance.now();
 function loop(now) {
   const dt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
+  if (game.state !== 'start' && game.state !== 'gameover' && game.state !== 'victory') ensureBgm();
   // 全局用时累计: 跳过开始 / 暂停 / 倒计时 / 结算状态 (切出后台时 RAF 不触发, 自然不计)
   const s = game.state;
   if (s !== 'start' && s !== 'paused' && s !== 'resuming' && s !== 'gameover' && s !== 'victory') {
