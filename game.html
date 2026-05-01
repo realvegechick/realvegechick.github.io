@@ -430,6 +430,15 @@ const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
 const W = cvs.width, H = cvs.height;
 const overlay = document.getElementById('overlay');
+const bgm = new Audio('./gaming-music-8-bit-console-play-background-intro-theme-278382.mp3');
+bgm.loop = true;
+bgm.volume = 0.45;
+let bgmStarted = false;
+
+function ensureBgm() {
+  if (bgmStarted) return;
+  bgm.play().then(() => { bgmStarted = true; }).catch(() => {});
+}
 
 const rand = (a,b) => a + Math.random()*(b-a);
 const randInt = (a,b) => Math.floor(rand(a,b+1));
@@ -944,6 +953,7 @@ function getXY(e) {
   return { x: (t.clientX-r.left)*W/r.width, y: (t.clientY-r.top)*H/r.height };
 }
 cvs.addEventListener('pointerdown', e => {
+  ensureBgm();
   if (game.state !== 'playing') return;
   pointer.down = true;
   const p = getXY(e);
@@ -1040,6 +1050,7 @@ function showStartScreen() {
 }
 
 function startGame() {
+  ensureBgm();
   overlay.className = 'overlay';
   overlay.innerHTML = '';
   game.state = 'playing';
