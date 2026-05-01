@@ -460,7 +460,8 @@ const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
 const W = cvs.width, H = cvs.height;
 const overlay = document.getElementById('overlay');
-const bgm = new Audio('./gaming-music-8-bit-console-play-background-intro-theme-278382.mp3');
+const BGM_URL = './gaming-music-8-bit-console-play-background-intro-theme-278382.mp3';
+const bgm = new Audio(BGM_URL);
 bgm.preload = 'auto';
 bgm.loop = true;
 bgm.volume = 0.45;
@@ -469,9 +470,78 @@ bgm.setAttribute('playsinline', '');
 bgm.setAttribute('webkit-playsinline', '');
 let bgmStarted = false;
 let bgmPlayLock = false;
+const isMobileAudioHost = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1;
+let bgmCtx = null;
+let bgmGain = null;
+let bgmBuffer = null;
+let bgmBufferLoading = null;
+let bgmSource = null;
 
-function ensureBgm() {
+function ensureBgmContext() {
+  if (isMobileAudioHost) return false;
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return false;
+  if (!bgmCtx) {
+    bgmCtx = new AC();
+    bgmGain = bgmCtx.createGain();
+    bgmGain.gain.value = 0.45;
+    bgmGain.connect(bgmCtx.destination);
+    bgmCtx.onstatechange = () => {
+      if (bgmCtx && bgmCtx.state === 'running') startWebAudioBgm();
+    };
+  }
+  if (bgmCtx.state === 'suspended') bgmCtx.resume().catch(() => {});
+  return true;
+}
+
+async function loadBgmBuffer() {
+  if (bgmBuffer) return bgmBuffer;
+  if (!bgmBufferLoading) {
+    bgmBufferLoading = fetch(BGM_URL)
+      .then(r => r.arrayBuffer())
+      .then(buf => bgmCtx.decodeAudioData(buf.slice(0)))
+      .then(decoded => {
+        bgmBuffer = decoded;
+        return decoded;
+      })
+      .catch(err => {
+        bgmBufferLoading = null;
+        throw err;
+      });
+  }
+  return bgmBufferLoading;
+}
+
+function startWebAudioBgm() {
+  if (!bgmCtx || !bgmGain || !bgmBuffer) return false;
+  if (bgmSource) return true;
+  const src = bgmCtx.createBufferSource();
+  src.buffer = bgmBuffer;
+  src.loop = true;
+  src.connect(bgmGain);
+  src.onended = () => {
+    if (bgmSource === src) bgmSource = null;
+  };
+  try {
+    src.start(0);
+    bgmSource = src;
+    bgmStarted = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function ensureBgm() {
   if (document.hidden) return;
+  if (ensureBgmContext()) {
+    try {
+      await loadBgmBuffer();
+      if (startWebAudioBgm()) return;
+    } catch (_) {
+      // WebAudio 失败时回落到 HTMLAudioElement
+    }
+  }
   if (!bgm.paused && !bgm.ended) {
     bgmStarted = true;
     return;
@@ -488,9 +558,15 @@ function ensureBgm() {
   }
 }
 
+function nudgeHtmlBgm() {
+  if (document.hidden) return;
+  if (bgm.readyState < 2) bgm.load();
+  if (bgm.paused || bgm.ended) ensureBgm();
+}
+
 // H5 / 移动端常会拦截首帧播放, 这里用首个用户手势做一次兜底解锁
 ['pointerdown', 'touchstart', 'keydown', 'click'].forEach(ev => {
-  document.addEventListener(ev, ensureBgm, { capture: true, passive: true });
+  document.addEventListener(ev, () => { ensureBgm(); }, { capture: true, passive: true });
 });
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && (game.state === 'playing' || game.state === 'collecting')) ensureBgm();
@@ -498,6 +574,23 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', () => {
   if (game.state === 'playing' || game.state === 'collecting') ensureBgm();
 });
+['waiting', 'stalled', 'suspend', 'abort', 'error'].forEach(ev => {
+  bgm.addEventListener(ev, () => {
+    if (isMobileAudioHost && (game.state === 'playing' || game.state === 'collecting')) {
+      setTimeout(nudgeHtmlBgm, 250);
+    }
+  });
+});
+bgm.addEventListener('ended', () => {
+  if (!document.hidden && (game.state === 'playing' || game.state === 'collecting')) ensureBgm();
+});
+setInterval(() => {
+  if (document.hidden) return;
+  if (game.state === 'playing' || game.state === 'collecting') {
+    if (isMobileAudioHost) nudgeHtmlBgm();
+    else ensureBgm();
+  }
+}, 4000);
 
 const rand = (a,b) => a + Math.random()*(b-a);
 const randInt = (a,b) => Math.floor(rand(a,b+1));
@@ -3606,7 +3699,16 @@ function buildStatsHtml() {
     })
     .join('');
   const uniqueEntries = game.stats.uniquesBought
-    .map(u => `<span style="margin-right:10px">${u.ico} ${u.n}</span>`)
+    .map(u => {
+      const it = SHOP_UNIQUE.find(s => s.n === u.n || s.ico === u.ico);
+      const goodHtml = (it?.good || []).map(g => `<div class="g">${g}</div>`).join('');
+      const badHtml = (it?.bad || []).map(b => `<div class="b">${b}</div>`).join('');
+      return `<div class="card unique" style="cursor:default;pointer-events:none;padding:6px 5px;border-width:1px;border-radius:4px;box-shadow:none;transform:none;min-width:0">
+        <div class="ico" style="font-size:clamp(14px,3.2vmin,20px);margin-bottom:2px">${u.ico}</div>
+        <div class="nm" style="font-size:clamp(9px,2vmin,12px);margin:2px 0">${u.n}</div>
+        <div class="ds" style="font-size:clamp(8px,1.8vmin,10px);min-height:0;gap:1px;line-height:1.35">${goodHtml}${badHtml}</div>
+      </div>`;
+    })
     .join('');
   const shopEntries = Object.entries(game.stats.shopBought)
     .map(([n, c]) => `<span style="margin-right:10px">${n}${c > 1 ? ` ×${c}` : ''}</span>`)
@@ -3621,7 +3723,7 @@ function buildStatsHtml() {
   const blocks = [];
   blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#cfe;font-weight:bold;margin-bottom:4px">⏱ 用时</div><div>${elapsedStr}</div></div>`);
   if (dmgEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffaa66;font-weight:bold;margin-bottom:6px">💥 伤害统计</div><div style="display:flex;flex-direction:column;gap:7px">${dmgEntries}</div></div>`);
-  if (uniqueEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffd06a;font-weight:bold;margin-bottom:4px">⚜ 神器</div><div style="line-height:1.7">${uniqueEntries}</div></div>`);
+  if (uniqueEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffd06a;font-weight:bold;margin-bottom:6px">⚜ 神器</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px">${uniqueEntries}</div></div>`);
   if (shopEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#a4dfff;font-weight:bold;margin-bottom:4px">🛍 普通道具</div><div style="line-height:1.7">${shopEntries}</div></div>`);
   return `<div style="display:flex;flex-direction:column;gap:8px;max-width:380px;width:90%;margin:8px auto;font-size:clamp(10px,2vmin,12px);text-align:left">${blocks.join('')}</div>`;
 }
