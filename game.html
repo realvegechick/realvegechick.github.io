@@ -163,6 +163,21 @@
     gap: clamp(6px, 1.6vmin, 12px);
     width:100%; max-width: 540px;
   }
+  .cards.one-row {
+    grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+    gap: clamp(4px, 1.2vmin, 8px);
+  }
+  .cards.one-row .card {
+    min-width: 0;
+    padding: clamp(6px, 1.5vmin, 10px) clamp(4px, 1vmin, 8px);
+  }
+  .cards.one-row .card .ico { font-size: clamp(16px, 4vmin, 24px); }
+  .cards.one-row .card .nm { font-size: clamp(10px, 2.3vmin, 13px); overflow-wrap: anywhere; }
+  .cards.one-row .card .ds {
+    font-size: clamp(8.5px, 1.9vmin, 11px);
+    min-height: clamp(34px, 8vmin, 44px);
+  }
+  .cards.one-row .card .pr { font-size: clamp(9px, 2vmin, 12px); }
   .card {
     background:#10101e; border:2px solid #2a2a44; border-radius:6px;
     padding: clamp(8px, 2vmin, 14px) clamp(6px, 1.5vmin, 12px);
@@ -364,6 +379,7 @@ const game = {
   shopRefreshCost: 10,
   shopNormalPicks: [],
   shopIsBoss: false,
+  endless: false,
   waveSnapshot: null,
   // 通关 / 失败统计: 各来源累计实际伤害 + 已购神器 + 已购普通道具次数
   stats: {
@@ -395,6 +411,11 @@ function gapForThreat(threat) {
   return 0.4 + threat * 0.18;
 }
 
+function clearBurn(e) {
+  e.burn = 0;
+  e.burnTickT = 0;
+}
+
 // 弹道增加的统一入口: 独眼形态下不实际加弹道, 每个弹道结算为攻击 ×1.5 (独立乘区)
 function grantProjectile(p, n) {
   // 弹道照常增加 (镜像分身会继承). 同时拥有超能光束时, 每个新弹道再叠加 1.4 攻击倍率
@@ -421,7 +442,7 @@ const CURSES = [
   { id:'wrath',    n:'愤怒', desc:'受伤翻倍' },
   { id:'greed',    n:'贪婪', desc:'吸金范围 ×2; 主动拾取扣钱, 飞出屏幕的金币反而进账' },
   { id:'lust',     n:'色欲', desc:'敌弹略微被玩家吸引' },
-  { id:'envy',     n:'嫉妒', desc:'消灭所有敌人后, 召唤一个镜像, 继承你的基础属性 (包括金币!)' },
+  { id:'envy',     n:'嫉妒', desc:'消灭所有敌人后, 召唤一个镜像, 继承你的主要战斗属性' },
 ];
 
 // 经验需求随等级线性增加: 5, 7, 9, 11...
@@ -431,29 +452,31 @@ const stars = [];
 for (let i = 0; i < 90; i++) stars.push({ x: Math.random()*W, y: Math.random()*H, s: Math.random()*1.6+0.3, v: Math.random()*40+15 });
 
 // 三层属性来源:
-//   base   - 本局开局滚出来的初始值,不再变化
-//   bonus  - 升级累加的"加性百分比"或整格,基于 base 线性叠加
-//   shopMul- 商店购买的独立乘区,每件商品 *= 一个倍率
-// 最终: player.X = base.X * (1 + bonus.Xpct) * shopMul.X  (或加格属性: base + bonus)
+//   base    - 本局初始基础值, 不再变化
+//   bonus   - 升级提供的基础数值加法, 或生命/护盾格数加法
+//   shopAdd - 普通商店道具提供的加性百分比, 同维度累加后作为一个乘区
+//   shopMul - 神器/特殊代价提供的独立乘区, 每个效果独立累乘
+// 最终: player.X = (base.X + bonus.X) * (1 + shopAdd.XPct) * shopMul.X
+// 生命/护盾等格数属性: base + bonus
 const base = {
   maxHp: 5, maxShield: 3,
   atk: 10, fireRate: 3,
-  bulletSpeed: 500, moveSpeed: 380,
+  bulletSpeed: 500, moveSpeed: 380, bulletSize: 1, spread: 0.209,
 };
-// 升级累加: maxHp/maxShield 是整数格, 其它 4 个是直接累加到 base 的固定值
+// 升级累加: 直接累加到 base 的固定基础值
 const bonus = {
   maxHp: 0, maxShield: 0,
   atk: 0, fireRate: 0,
-  bulletSpeed: 0, moveSpeed: 0,
+  bulletSpeed: 0, moveSpeed: 0, bulletSize: 0,
 };
 // 普通商店道具: 同维度累加 (加性百分比), 整体作为一个乘区
 const shopAdd = {
   atkPct: 0, fireRatePct: 0,
-  bulletSpeedPct: 0, moveSpeedPct: 0,
+  bulletSpeedPct: 0, moveSpeedPct: 0, bulletSizePct: 0,
 };
-// 独特道具: 每件独立 ×倍率累乘
+// 独特道具 / 特殊代价: 每个独立 ×倍率累乘
 const shopMul = {
-  atk: 1, fireRate: 1, bulletSpeed: 1, moveSpeed: 1,
+  atk: 1, fireRate: 1, bulletSpeed: 1, moveSpeed: 1, bulletSize: 1, spread: 1,
 };
 
 const player = {
@@ -470,7 +493,7 @@ const player = {
   bulletSize: 1, evade: 0,
   // 火焰附加: 命中敌人为其叠加 burnStacks 层燃烧, 每层 1 dmg/0.5s, 无衰减
   burnStacks: 0,
-  // 原初火焰 (独特): 叠层时额外触发一次燃烧伤害, cap 为 200×轮数
+  // 原初火焰 (独特): 燃烧 tick 额外造成最大生命百分比伤害, 但触发频率减半
   primalFire: false,
   // baseMagnetRange 由商店"磁铁核心"修改; magnetRange 为派生字段, recompute 中按 activeCurse 计算
   baseMagnetRange: 90, magnetRange: 90,
@@ -517,6 +540,8 @@ function recompute() {
   player.fireRate = Math.min(20, (base.fireRate + bonus.fireRate) * Math.max(0.1, 1 + shopAdd.fireRatePct) * shopMul.fireRate);
   player.bulletSpeed = (base.bulletSpeed + bonus.bulletSpeed) * Math.max(0.2, 1 + shopAdd.bulletSpeedPct) * shopMul.bulletSpeed;
   player.moveSpeed = (base.moveSpeed + bonus.moveSpeed) * Math.max(0.2, 1 + shopAdd.moveSpeedPct) * shopMul.moveSpeed;
+  player.bulletSize = Math.max(0.1, (base.bulletSize + bonus.bulletSize) * Math.max(0.1, 1 + shopAdd.bulletSizePct) * shopMul.bulletSize);
+  player.spread = Math.max(0.02, base.spread * shopMul.spread);
   // 以攻为守: 永久禁用护盾
   if (player.bulletParry) { player.maxShield = 0; player.shield = 0; }
   // 当前激活诅咒的实时效果 (单/多张, 每波刷新)
@@ -848,10 +873,12 @@ function rollInitialStats() {
   base.fireRate = 3;
   base.bulletSpeed = 500;
   base.moveSpeed = 350;
+  base.bulletSize = 1;
+  base.spread = 0.209;
   for (const k in bonus) bonus[k] = 0;
   for (const k in shopAdd) shopAdd[k] = 0;
   for (const k in shopMul) shopMul[k] = 1;
-  player.projectiles = 1; player.spread = 0.209;
+  player.projectiles = 1; player.spread = base.spread;
   player.critRate = 0; player.critDmg = 1.5;
   player.homing = 0; player.pierce = 0;
   player.bulletSize = 1; player.evade = 0;
@@ -886,6 +913,7 @@ function rollInitialStats() {
   game.activeCurses.clear();
   game.mirrorsSpawned = false;
   game.bossEncounter = 0;
+  game.endless = false;
   game.elapsed = 0;
   game.stats.damage = { bullet: 0, laser: 0, burn: 0, sentinel: 0, guardian: 0, missile: 0, field: 0 };
   game.stats.uniquesBought = [];
@@ -913,6 +941,7 @@ function startGame() {
   overlay.className = 'overlay';
   overlay.innerHTML = '';
   game.state = 'playing';
+  game.endless = false;
   game.round = 1; game.wave = 1;
   game.level = 1; game.killCount = 0;
   game.killForLevel = expNeeded(game.level);
@@ -1280,8 +1309,7 @@ function bossSummonWave(boss) {
   }
 }
 
-// 嫉妒诅咒召唤的镜像分身: 继承玩家 maxHp/maxShield/fireRate/projectiles/moveSpeed/bulletSpeed
-// 死亡掉落金币 = 玩家当前金币 (上限 50), 因此玩家越富镜像越值钱
+// 嫉妒诅咒召唤的镜像分身: 继承玩家主要战斗属性, 但不掉落金币
 // 受击与玩家一致 (优先扣盾, 大幅无敌时间). 撞玩家/光球: 双向清盾/即死.
 function spawnMirrorEnemy() {
   const m = {
@@ -1295,14 +1323,16 @@ function spawnMirrorEnemy() {
     projectiles: player.projectiles,
     moveSpeed: player.moveSpeed,
     bulletSpeed: player.bulletSpeed,
+    bulletSize: player.bulletSize,
+    spread: player.spread,
     color: '#e060c8',
     coin: 0,
     invuln: 2.0,            // 出场无敌 2 秒 (类似 boss 入场)
     spawnInvulnT: 2.0,      // 入场无敌计时, 期间画金色光环
     invulnT: 0.6,           // 受击后无敌时间, 与玩家一致
     shieldDelay: 0,
-    shieldRegenDelayBase: 6,
-    shieldRegenInterval: 2.5,
+    shieldRegenDelayBase: player.shieldRegenDelayBase,
+    shieldRegenInterval: player.shieldRegenInterval,
     shieldRegenT: 0,
     shotCD: 0.6,            // 出场延迟射击
     cycleT: 0,              // 攻击周期: 1.5s 射击 + 0.5s 暂停
@@ -1315,7 +1345,7 @@ function spawnMirrorEnemy() {
 function mirrorFire(e) {
   const aim = Math.atan2(player.y - e.y, player.x - e.x);
   const n = e.projectiles;
-  const spread = 0.16;
+  const spread = e.spread ?? 0.16;
   const total = spread * (n - 1);
   const sp = e.bulletSpeed || 360;
   for (let i = 0; i < n; i++) {
@@ -1325,7 +1355,7 @@ function mirrorFire(e) {
     bullets.push({
       x: e.x, y: e.y,
       vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
-      r: 5, dmg: 1, from: 'enemy',
+      r: 6.4 * (e.bulletSize || 1), dmg: 1, from: 'enemy',
       pierce: player.pierce | 0,
     });
   }
@@ -1398,7 +1428,7 @@ function spawnBoss(scale) {
   const boss = {
     x: W/2, y: -80, r: 50, type:'boss', boss:true,
     maxHp: totalHp, hp: totalHp,
-    coin: 50, color: '#ff4488',
+    coin: 40 + 10 * game.round, color: '#ff4488',
     targetY: 110, vy: 50, vx: 80,
     phase: initialPhase, phaseT: 0, fireT: 0, t: 0,
     invuln: true,
@@ -1541,6 +1571,7 @@ function updateEnemy(e, dt) {
       e.aimX = player.x; e.aimY = player.y;
       e.vx = 0; e.vy = 0;
       e.t = 0;
+      clearBurn(e);
     }
   } else if (e.type === 'spiker') {
     if (e.y < -e.r - 30) {
@@ -1549,12 +1580,14 @@ function updateEnemy(e, dt) {
       e.warningT = 0.8;
       e.vy = -rand(60, 90);
       e.t = 0;
+      clearBurn(e);
     }
   } else if (e.y > H + 60) {
     e.y = -e.r - 10;
     e.x = rand(40, W - 40);
     if (e.bx !== undefined) e.bx = e.x;
     e.t = 0;
+    clearBurn(e);
   }
 }
 
@@ -1798,7 +1831,7 @@ function fire() {
       dmg, crit: isCrit, critCount,
       from: 'player', source: 'bullet',
       pierce: player.pierce, hit: null,
-      homing: player.homing,
+      homing: player.homing, target: null, retargetT: 0,
     });
   }
 }
@@ -2091,24 +2124,30 @@ function drawMissileFlashes() {
   }
 }
 
-function spawnMissile() {
-  // 找左右两侧最近的可击目标 (按敌人 x 与 player.x 的相对位置分组)
-  let bestL = null, bdL = Infinity;
-  let bestR = null, bdR = Infinity;
+function findMissileTarget(exclude = null, exactHp = null) {
+  let best = null;
+  let bestHp = -1;
+  let bestDist = Infinity;
   for (const e of enemies) {
+    if (e === exclude) continue;
     if (e.dead || e.warningT > 0) continue;
     if (e.invuln === true || e.invuln > 0) continue;
     const dx = e.x - player.x, dy = e.y - player.y;
     const d2 = dx * dx + dy * dy;
-    if (e.x <= player.x) {
-      if (d2 < bdL) { bdL = d2; bestL = e; }
-    } else {
-      if (d2 < bdR) { bdR = d2; bestR = e; }
+    const hp = e.maxHp ?? e.hp ?? 0;
+    if (exactHp !== null && hp !== exactHp) continue;
+    if (hp > bestHp || (hp === bestHp && d2 < bestDist)) {
+      best = e;
+      bestHp = hp;
+      bestDist = d2;
     }
   }
-  // 一侧没敌人 → 两枚共享同一目标
-  if (!bestL) bestL = bestR;
-  if (!bestR) bestR = bestL;
+  return best;
+}
+
+function spawnMissile() {
+  const targetL = findMissileTarget();
+  const targetR = targetL ? (findMissileTarget(targetL, targetL.maxHp ?? targetL.hp ?? 0) || targetL) : null;
   const offset = 14;
   // 左侧弹
   const al = -Math.PI / 2 - rand(0.05, 0.25);
@@ -2117,7 +2156,7 @@ function spawnMissile() {
     vx: Math.cos(al) * MISSILE_INIT_SPEED,
     vy: Math.sin(al) * MISSILE_INIT_SPEED,
     r: 5, from: 'player', type: 'missile',
-    target: bestL, age: 0, pierce: 0, hit: null, dmg: 0,
+    target: targetL, age: 0, pierce: 0, hit: null, dmg: 0,
   });
   // 右侧弹
   const ar = -Math.PI / 2 + rand(0.05, 0.25);
@@ -2126,14 +2165,14 @@ function spawnMissile() {
     vx: Math.cos(ar) * MISSILE_INIT_SPEED,
     vy: Math.sin(ar) * MISSILE_INIT_SPEED,
     r: 5, from: 'player', type: 'missile',
-    target: bestR, age: 0, pierce: 0, hit: null, dmg: 0,
+    target: targetR, age: 0, pierce: 0, hit: null, dmg: 0,
   });
 }
 
 function missileImpact(b, direct) {
-  // 直接命中: 不暴击 (已自带 5× 倍率, 定位前期主力道具)
+  // 直接命中: 不暴击. 小怪按最大生命 20%, Boss 按最大生命 1%.
   if (direct && !direct.dead && direct.invuln !== true && !(direct.invuln > 0) && !(direct.warningT > 0)) {
-    const dmg = player.atk * MISSILE_DIRECT_MUL;
+    const dmg = direct.maxHp * (direct.boss ? 0.01 : 0.20);
     hitEnemy(direct, {
       x: direct.x, y: direct.y - 6,
       dmg, crit: false, critCount: 0,
@@ -2188,15 +2227,7 @@ function updateBullet(b, dt) {
     b.age = (b.age || 0) + dt;
     if (!b.target || b.target.dead || b.target.warningT > 0 ||
         b.target.invuln === true || b.target.invuln > 0) {
-      let bd = Infinity, best = null;
-      for (const e of enemies) {
-        if (e.dead || e.warningT > 0) continue;
-        if (e.invuln === true || e.invuln > 0) continue;
-        const dx = e.x - b.x, dy = e.y - b.y;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bd) { bd = d2; best = e; }
-      }
-      b.target = best;
+      b.target = findMissileTarget();
     }
     if (b.target) {
       // 转向: 当前飞行方向以最大角速度逼近目标方位 (避免径向加速度造成的绕圈 / 过冲)
@@ -2227,20 +2258,29 @@ function updateBullet(b, dt) {
     return;
   }
   if (b.from === 'player' && b.homing > 0) {
-    let best = null, bd = 280;
-    for (const e of enemies) {
-      if (e.dead) continue;
-      if (b.hit && b.hit.has(e)) continue;
-      const d = dist(b, e);
-      if (d < bd) { bd = d; best = e; }
+    b.retargetT = (b.retargetT || 0) - dt;
+    const targetInvalid = !b.target || b.target.dead || b.target.warningT > 0 ||
+      b.target.invuln === true || b.target.invuln > 0 || (b.hit && b.hit.has(b.target));
+    if (targetInvalid || b.retargetT <= 0) {
+      b.retargetT = 0.12;
+      let best = null, bd = 260 + Math.min(180, Math.max(0, player.bulletSpeed - 500) * 0.35);
+      for (const e of enemies) {
+        if (e.dead || e.warningT > 0) continue;
+        if (e.invuln === true || e.invuln > 0) continue;
+        if (b.hit && b.hit.has(e)) continue;
+        const d = dist(b, e);
+        if (d < bd) { bd = d; best = e; }
+      }
+      b.target = best;
     }
-    if (best) {
-      const ta = Math.atan2(best.y - b.y, best.x - b.x);
+    if (b.target) {
+      const ta = Math.atan2(b.target.y - b.y, b.target.x - b.x);
       const ca = Math.atan2(b.vy, b.vx);
       let diff = ta - ca;
       while (diff > Math.PI) diff -= TAU;
       while (diff < -Math.PI) diff += TAU;
-      const turn = b.homing * 1.75 * dt;
+      const speedAimMul = clamp(Math.hypot(b.vx, b.vy) / 500, 0.8, 1.6);
+      const turn = b.homing * 2.05 * speedAimMul * dt;
       const na = ca + clamp(diff, -turn, turn);
       const sp = Math.hypot(b.vx, b.vy);
       b.vx = Math.cos(na) * sp;
@@ -2271,28 +2311,19 @@ function hitEnemy(e, b) {
     floats.push({ x: b.x, y: b.y - 5, t: 0.4, life: 0.4, txt: '免疫', color: '#fc4', size: 11 });
     return;
   }
-  // 镜像分身: 优先扣盾后扣血; 每次扣血恢复全部护盾
+  // 镜像分身: 优先扣盾后扣血; 不再因受伤立刻恢复护盾
   if (e.type === 'mirror') {
-    let lostHp = false;
     if (e.shield > 0) {
       e.shield -= 1;
       floats.push({ x: b.x, y: b.y - 5, t: 0.5, life: 0.5, txt: '-1 盾', color: '#7df', size: 12 });
     } else {
       e.hp -= 1;
-      lostHp = true;
       floats.push({ x: b.x, y: b.y - 5, t: 0.5, life: 0.5, txt: '-1', color: '#f44', size: 13 });
     }
     addHitParticles(b.x, b.y);
     e.invuln = e.invulnT;
-    if (lostHp && e.hp > 0) {
-      e.shield = e.maxShield;
-      e.shieldDelay = 0;
-      e.shieldRegenT = 0;
-      floats.push({ x: e.x, y: e.y - e.r - 12, t: 0.6, life: 0.6, txt: '盾恢复', color: '#7df', size: 12 });
-    } else {
-      e.shieldDelay = e.shieldRegenDelayBase;
-      e.shieldRegenT = 0;
-    }
+    e.shieldDelay = e.shieldRegenDelayBase;
+    e.shieldRegenT = 0;
     if (e.hp <= 0 && !e.dead) {
       e.dead = true; e.killed = true;
       addExplosion(e.x, e.y, e.color, 28);
@@ -2437,40 +2468,34 @@ function collideKillBoss(b) {
 }
 
 // 火焰附加: 给敌人叠加 n 层燃烧 (默认无衰减, 每 0.5 秒每层 1 dmg)
-// 镜像分身免疫. 原初火焰: 层数 cap = 200 × 当前轮数, 叠层时额外触发一次燃烧脉冲
-// 燃烧基础节拍, 实际节拍 = BURN_TICK / (1 + ln(stacks)) — 层数越多触发越快
+// 镜像分身免疫. 原初火焰: 燃烧 tick 额外造成最大生命百分比伤害, 但触发频率减半
+// 燃烧基础节拍, 实际节拍 = BURN_TICK / sqrt(stacks) — 层数越多触发越快
 const BURN_TICK = 0.5;
 function applyBurn(e, n) {
   if (!e || e.dead || e.type === 'mirror') return;
   // 免疫状态 (boss 入场 / 二阶段过场 / 拦截机警示) 不能被附加燃烧
   if (e.invuln === true || e.invuln > 0 || e.warningT > 0) return;
-  const cap = player.primalFire ? 200 * game.round : Infinity;
   // 恶魔契约: 1 HP 且无盾时燃烧附加最终修正 +5
   if (player.devilContract && player.hp === 1 && player.shield === 0) n += 5;
-  e.burn = Math.min(cap, (e.burn || 0) + n);
+  e.burn = (e.burn || 0) + n;
   if (e.burnTickT === undefined) e.burnTickT = 0;
-  // 原初火焰: 立即追加一次燃烧脉冲伤害 (= 当前层数)
-  if (player.primalFire && e.invuln !== true && !(e.invuln > 0) && !(e.warningT > 0)) {
-    hitEnemy(e, {
-      x: e.x, y: e.y - 6,
-      dmg: e.burn, crit: false, critCount: 0,
-      from: 'player', fire: true, source: 'burn',
-    });
-  }
 }
 // 每帧给所有有燃烧层数的敌人累加计时, 满 interval 秒结算一次伤害 = 层数.
-// interval = BURN_TICK / (1 + ln(stacks)). 层数越多触发越频繁.
+// interval = BURN_TICK / sqrt(stacks). 层数越多触发越频繁.
 function tickBurns(dt) {
   for (const e of enemies) {
     if (!e.burn || e.dead) continue;
     e.burnTickT += dt;
-    const interval = BURN_TICK / (1 + Math.log(Math.max(1, e.burn)));
+    const interval = (BURN_TICK / Math.sqrt(Math.max(1, e.burn))) * (player.primalFire ? 2 : 1);
     while (e.burnTickT >= interval) {
       e.burnTickT -= interval;
       if (e.invuln === true || e.invuln > 0 || e.warningT > 0) continue;
+      const primalBonus = player.primalFire
+        ? e.maxHp * (e.boss ? 0.001 : 0.05)
+        : 0;
       hitEnemy(e, {
         x: e.x, y: e.y - 6,
-        dmg: e.burn, crit: false, critCount: 0,
+        dmg: e.burn + primalBonus, crit: false, critCount: 0,
         from: 'player', fire: true, source: 'burn',
       });
     }
@@ -2568,7 +2593,7 @@ function damagePlayer() {
 }
 
 // ============== 升级页 ==============
-// 升级选项: 加性百分比基于 base. 不再提供生命/护盾上限提升。
+// 升级选项: 以加法提升基础数值. 不再提供生命/护盾上限提升。
 // 全视之眼影响所有 N 选一 / 槽位容量
 function pickCount() { return player.allSeeingEye ? 4 : 3; }
 function pickWord() { return player.allSeeingEye ? '四选一' : '三选一'; }
@@ -2598,10 +2623,10 @@ const LEVEL_OPTIONS = [
   { n:'弹体', icon:'●',
     desc: () => {
       const cur = player.bulletSize;
-      const nxt = cur + 0.15;
-      return `弹体 +15%   ${cur.toFixed(2)} → ${nxt.toFixed(2)}`;
+      const nxt = (base.bulletSize + bonus.bulletSize + 0.15) * Math.max(0.1, 1 + shopAdd.bulletSizePct) * shopMul.bulletSize;
+      return `基础弹体 +0.15   ${cur.toFixed(2)} → ${nxt.toFixed(2)}`;
     },
-    apply: () => { player.bulletSize += 0.15; } },
+    apply: () => { bonus.bulletSize += 0.15; recompute(); } },
   { n:'移速', icon:'✦',
     desc: () => {
       const cur = player.moveSpeed;
@@ -2637,7 +2662,7 @@ function openLevelup() {
   overlay.innerHTML = `
     <div class="title">⚡ 等级 ${game.level} → ${game.level + 1}</div>
     <div class="subtitle">${pickWord()} · 升级基于初始基础值线性叠加</div>
-    <div class="cards" id="cards"></div>`;
+    <div class="cards one-row" id="cards" style="--cols:${picks.length}"></div>`;
   const wrap = document.getElementById('cards');
   picks.forEach(p => {
     const el = document.createElement('div');
@@ -2668,9 +2693,9 @@ const SHOP_ITEMS = [
     good:['弹道 +1'], bad:['攻击 ×0.80'],
     apply: p => { grantProjectile(p, 1); shopMul.atk *= 0.80; recompute(); } },
   { n:'集中射击', ico:'│', cost:22,
-    good:['扩散 -40%', '暴击率 +10%'], bad:[],
+    good:['扩散 ×0.70', '暴击率 +10%'], bad:[],
     can: p => p.spread > 0.04,
-    apply: p => { p.spread *= 0.60; p.critRate = Math.min(2, p.critRate + 0.10); } },
+    apply: p => { shopMul.spread *= 0.70; p.critRate = Math.min(2, p.critRate + 0.10); recompute(); } },
   { n:'狂热射击', ico:'⚡', cost:28,
     good:['射速 +15%'], bad:['移速 -15%'],
     apply: p => { shopAdd.fireRatePct += 0.15; shopAdd.moveSpeedPct -= 0.15; recompute(); } },
@@ -2702,10 +2727,10 @@ const SHOP_ITEMS = [
     apply: p => { grantProjectile(p, 2); shopMul.fireRate *= 0.70; recompute(); } },
   { n:'大型弹头', ico:'●', cost:25,
     good:['子弹大小 +30%'], bad:['弹速 -15%'],
-    apply: p => { p.bulletSize += 0.30; shopAdd.bulletSpeedPct -= 0.15; recompute(); } },
+    apply: p => { shopAdd.bulletSizePct += 0.30; shopAdd.bulletSpeedPct -= 0.15; recompute(); } },
   { n:'机动核心', ico:'⛢', cost:26,
     good:['移速 +25%'], bad:['子弹大小 -15%'],
-    apply: p => { shopAdd.moveSpeedPct += 0.25; p.bulletSize = Math.max(0.1, p.bulletSize - 0.15); recompute(); } },
+    apply: p => { shopAdd.moveSpeedPct += 0.25; shopAdd.bulletSizePct -= 0.15; recompute(); } },
   { n:'电磁弹射', ico:'➳', cost:20,
     good:['弹速 +40%'], bad:[],
     apply: p => { shopAdd.bulletSpeedPct += 0.40; recompute(); } },
@@ -2737,9 +2762,9 @@ const SHOP_UNIQUE = [
     good:['召唤两个发射短程射线的无人机 (可暴击)'], bad:[],
     can: p => !p.sentinels,
     apply: p => { p.sentinels = true; initSentinels(); } },
-  { id:'psybullet', n:'灵能子弹', ico:'✺', cost:180, unique:true,
-    good:['追踪 +0.6'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
-    can: p => p.homing < 2 && !p.bulletParry,
+  { id:'psybullet', n:'灵能导航', ico:'✺', cost:180, unique:true,
+    good:['你的主要攻击方式获得追踪效果'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
+    can: p => p.homing < 2,
     buyCheck: p => (base.maxHp + bonus.maxHp) > 1,
     apply: p => {
       p.homing = Math.min(2, p.homing + 0.6);
@@ -2756,17 +2781,18 @@ const SHOP_UNIQUE = [
       recompute();
       if (p.hp > p.maxHp) p.hp = p.maxHp;
     } },
-  { id:'thunder', n:'雷霆改造', ico:'⚡', cost:150, unique:true,
-    good:['射速 ×1.60 (独立)'], bad:['护盾上限 -1 格'],
+  { id:'thunder', n:'回响形态', ico:'⚡', cost:150, unique:true,
+    good:['射速 ×2.00 (独立)'], bad:['护盾上限 -1 格'],
     apply: p => {
-      bonus.maxShield -= 1; shopMul.fireRate *= 1.60;
+      bonus.maxShield -= 1; shopMul.fireRate *= 2.00;
       recompute();
       if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
   { id:'giant', n:'巨人形态', ico:'⛰', cost:80, unique:true,
-    good:['生命上限 +2 格', '体型 ×1.5'], bad:[],
+    good:['生命上限 +2 格', '体型 ×1.5', '弹体大小 ×1.5'], bad:[],
     apply: p => {
       p.bigForm = true;
+      shopMul.bulletSize *= 1.5;
       bonus.maxHp += 2;
       recompute();
       p.hp = Math.min(p.maxHp, p.hp + 2);
@@ -2811,7 +2837,7 @@ const SHOP_UNIQUE = [
       if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
   { id:'missile', n:'死神飞弹', ico:'☠', cost:160, unique:true,
-    good:['发射 2 枚飞弹, 造成基于攻击力的范围伤害 (间隔随攻速缩短)'],
+    good:['每 3s 发射两枚飞弹, 间隔随攻速减小', '飞弹命中造成 20% 最大生命值伤害 (BOSS 为 1%)', '并造成基于攻击力的范围伤害'],
     bad:['无护盾遭到撞击将直接殉爆'],
     can: p => !p.missileLauncher,
     apply: p => { p.missileLauncher = true; p.missileT = 0; } },
@@ -2820,8 +2846,8 @@ const SHOP_UNIQUE = [
     can: p => !p.absoluteField,
     apply: p => { p.absoluteField = true; p.fieldTickT = 0; } },
   { id:'primalfire', n:'原初火焰', ico:'🜂', cost:150, unique:true,
-    good:['向敌人附加燃烧时额外触发一次燃烧伤害'],
-    bad:['燃烧层数无法超过 200 × 当前轮数'],
+    good:['燃烧触发时额外造成最大生命伤害', '小怪 5%, BOSS 0.1%'],
+    bad:['燃烧触发频率减半'],
     can: p => !p.primalFire,
     apply: p => { p.primalFire = true; } },
   { id:'alleye', n:'全视之眼', ico:'👁', cost:130, unique:true, maxRound:5,
@@ -2978,6 +3004,20 @@ function pickNormalShopItems(excludeItems) {
   return picks;
 }
 
+function fillNormalShopPicks() {
+  const target = pickCount();
+  if (game.shopNormalPicks.length >= target) return;
+  const currentItems = game.shopNormalPicks.filter(p => p);
+  const extra = pickNormalShopItems(currentItems);
+  for (const it of extra) {
+    if (game.shopNormalPicks.length >= target) break;
+    if (it && !currentItems.includes(it)) {
+      game.shopNormalPicks.push(it);
+      currentItems.push(it);
+    }
+  }
+}
+
 function openShop(isBossClear) {
   game.state = 'shop';
   game.shopIsBoss = isBossClear;
@@ -2992,6 +3032,8 @@ function openShop(isBossClear) {
 
 function renderShop() {
   const isBossClear = game.shopIsBoss;
+  const priceMul = getShopPriceMul();
+  fillNormalShopPicks();
   overlay.className = 'overlay show';
   // 独特槽位: 玩家 uniqueSlots 长度 0-3, 不足补空槽
   const slots = player.uniqueSlots.slice();
@@ -3001,13 +3043,13 @@ function renderShop() {
 
   overlay.innerHTML = `
     <div class="title">${isBossClear ? '★ Boss 已被击败' : '🛒 装备商店'}</div>
-    <div class="subtitle">${isBossClear ? '准备进入第 ' + game.round + ' 轮' : '选购或直接开始下一波'}</div>
+    <div class="subtitle">${isBossClear ? '准备进入第 ' + game.round + ' 轮' : '选购或直接开始下一波'}${game.endless && priceMul > 1 ? ' · 无尽价格 ×' + priceMul.toFixed(2) : ''}</div>
     ${bossNext ? '<div style="color:#ffd06a; font-weight:bold; text-align:center; margin: 4px 0 8px; font-size: clamp(11px, 2.4vmin, 13px); text-shadow: 0 0 8px rgba(255,200,80,0.6);">⚠ BOSS 即将来袭 ⚠</div>' : ''}
     <div id="ovCoin">金币: ${player.coin}</div>
     <div class="section-label">神 器</div>
-    <div class="cards" id="uniqueSlotsRow"></div>
+    <div class="cards one-row" id="uniqueSlotsRow" style="--cols:${pickCount()}"></div>
     <div class="section-label" style="color:#a4dfff">商 品</div>
-    <div class="cards" id="normalCards"></div>
+    <div class="cards one-row" id="normalCards" style="--cols:${pickCount()}"></div>
     <div class="shop-actions">
       <button id="repairBtn">战斗维修 (20金 +1HP)</button>
       <button id="refreshBtn">刷新 (${game.shopRefreshCost}金)</button>
@@ -3018,7 +3060,7 @@ function renderShop() {
   slots.forEach((it, i) => uw.appendChild(makeUniqueSlotCard(it, i)));
 
   const nw = document.getElementById('normalCards');
-  game.shopNormalPicks.forEach((p, i) => nw.appendChild(makeNormalCard(p, i)));
+  game.shopNormalPicks.slice(0, pickCount()).forEach((p, i) => nw.appendChild(makeNormalCard(p, i)));
 
   // 战斗维修
   const repairBtn = document.getElementById('repairBtn');
@@ -3052,6 +3094,15 @@ function renderShop() {
   };
 }
 
+function getShopPriceMul() {
+  if (!game.endless) return 1;
+  return Math.pow(1.3, Math.max(0, game.round - 10));
+}
+
+function shopCost(baseCost) {
+  return Math.ceil(baseCost * getShopPriceMul());
+}
+
 function makeNormalCard(p, idx) {
   const el = document.createElement('div');
   if (!p) {
@@ -3059,16 +3110,17 @@ function makeNormalCard(p, idx) {
     el.innerHTML = `<div class="ico">·</div><div class="nm">已售出</div><div class="ds"></div><div class="pr"></div>`;
     return el;
   }
-  const canBuy = player.coin >= p.cost
+  const cost = shopCost(p.cost);
+  const canBuy = player.coin >= cost
     && (!p.can || p.can(player))
     && (!p.buyCheck || p.buyCheck(player));
   el.className = 'card' + (canBuy ? '' : ' disabled');
   const goodHtml = (p.good || []).map(g => `<div class="g">${g}</div>`).join('');
   const badHtml = (p.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-  el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${p.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${p.cost} 金</div>`;
+  el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${p.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${cost} 金</div>`;
   el.onclick = () => {
     if (!canBuy) return;
-    player.coin -= p.cost;
+    player.coin -= cost;
     p.apply(player);
     game.stats.shopBought[p.n] = (game.stats.shopBought[p.n] || 0) + 1;
     game.shopNormalPicks[idx] = null;
@@ -3084,16 +3136,17 @@ function makeUniqueSlotCard(it, slotIdx) {
     el.innerHTML = `<div class="ico">·</div><div class="nm">[ 空 槽 ]</div><div class="ds"></div><div class="pr"></div>`;
     return el;
   }
-  const canBuy = player.coin >= it.cost
+  const cost = shopCost(it.cost);
+  const canBuy = player.coin >= cost
     && (!it.can || it.can(player))
     && (!it.buyCheck || it.buyCheck(player));
   el.className = 'card unique' + (canBuy ? '' : ' disabled');
   const goodHtml = (it.good || []).map(g => `<div class="g">${g}</div>`).join('');
   const badHtml = (it.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-  el.innerHTML = `<div class="ico">${it.ico}</div><div class="nm">${it.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${it.cost} 金</div>`;
+  el.innerHTML = `<div class="ico">${it.ico}</div><div class="nm">${it.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${cost} 金</div>`;
   el.onclick = () => {
     if (!canBuy) return;
-    player.coin -= it.cost;
+    player.coin -= cost;
     it.apply(player);
     if (it.id) player.uniqueOwned[it.id] = true;
     game.stats.uniquesBought.push({ n: it.n, ico: it.ico });
@@ -3119,6 +3172,7 @@ function snapshotWave() {
     activeCurses: [...game.activeCurses],
     mirrorsSpawned: false,
     bossEncounter: game.bossEncounter,
+    endless: game.endless,
     spawnQueue: game.spawnQueue.map(s => ({ ...s })),
     spawnTimer: game.spawnTimer,
     curseDeck: game.curseDeck.slice(),
@@ -3145,6 +3199,7 @@ function retryWave() {
   game.activeCurses = new Set(s.activeCurses || []);
   game.mirrorsSpawned = s.mirrorsSpawned;
   game.bossEncounter = s.bossEncounter;
+  game.endless = !!s.endless;
   game.spawnQueue = s.spawnQueue.map(x => ({ ...x }));
   game.spawnTimer = s.spawnTimer;
   game.curseDeck = s.curseDeck.slice();
@@ -3202,7 +3257,7 @@ function openUniqueChoice() {
   overlay.innerHTML = `
     <div class="title">★ Boss 已被击败</div>
     <div class="subtitle">${pickWord()}解锁神器</div>
-    <div class="cards" id="uniqueChoices"></div>`;
+    <div class="cards one-row" id="uniqueChoices" style="--cols:${picks.length}"></div>`;
   const wrap = document.getElementById('uniqueChoices');
   picks.forEach(p => {
     const el = document.createElement('div');
@@ -3293,12 +3348,13 @@ function proceedToNextStage() {
   for (const b of bullets) if (b.from === 'player') b.dead = true;
   if (game.wave === game.wavesPerRound) {
     // 通关: 击败第 10 轮 boss
-    if (game.round >= 10) {
+    if (game.round >= 10 && !game.endless) {
       onGameVictory();
       return;
     }
     game.round++; game.wave = 1;
-    openUniqueChoice(); // 先三选一独特, 再进商店
+    if (game.endless) openShop(true);
+    else openUniqueChoice(); // 先三选一独特, 再进商店
   } else {
     game.wave++;
     openShop(false);
@@ -3350,8 +3406,19 @@ function onGameVictory() {
       <div style="font-size: clamp(10px,2.2vmin,12px); opacity:0.75">坚持到第 ${game.round} 轮 · 等级 ${game.level} · 金币 ${player.coin}</div>
     </div>
     ${buildStatsHtml()}
-    <button id="restart">重新开始</button>`;
-  document.getElementById('restart').onclick = showStartScreen;
+    <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:8px">
+      <button id="homeBtn">回到首页</button>
+      <button id="endlessBtn">无尽模式</button>
+    </div>`;
+  document.getElementById('homeBtn').onclick = showStartScreen;
+  document.getElementById('endlessBtn').onclick = enterEndlessMode;
+}
+
+function enterEndlessMode() {
+  game.endless = true;
+  game.round = 11;
+  game.wave = 1;
+  openShop(true);
 }
 
 function onGameOver() {
@@ -3369,9 +3436,9 @@ function onGameOver() {
       <div class="title">飞机坠毁</div>
       <div class="subtitle">坚持到第 ${game.round} 轮 · 第 ${game.wave} 波</div>
       ${buildStatsHtml()}
-      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:6px">
-        ${canRetry ? `<button id="retryBtn">重试本波</button>` : ''}
-        <button id="restart">重新开始</button>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin-top:6px">
+        ${canRetry ? `<button id="retryBtn" style="padding: clamp(11px, 2.8vmin, 16px) clamp(30px, 7vmin, 48px); font-size: clamp(14px, 3vmin, 17px); border-color:#6cf; box-shadow:0 0 18px rgba(102,200,255,.22);">重试本波</button>` : ''}
+        <button id="restart" style="padding: clamp(5px, 1.4vmin, 8px) clamp(12px, 3vmin, 18px); font-size: clamp(10px, 2.2vmin, 12px); background:#5a1a1a; color:#ffd6d6; border-color:#9a3a3a;">放弃尝试</button>
       </div>`;
     if (canRetry) document.getElementById('retryBtn').onclick = retryWave;
     document.getElementById('restart').onclick = showStartScreen;
@@ -3402,7 +3469,13 @@ function spawnCoins(x, y, n, lucky = false) {
     // 初始爆散方向偏上半圈 + 随机水平, 配合重力下坠手感更自然
     const a = -Math.PI / 2 + rand(-1.0, 1.0);
     const sp = rand(120, 220);
-    coins.push({ x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, t: 0, v: 1, dead: false, lucky });
+    coins.push({
+      x, y,
+      vx: Math.cos(a)*sp,
+      vy: Math.sin(a)*sp,
+      t: 0, v: 1, dead: false, lucky,
+      autoDelay: lucky ? rand(0.25, 0.38) : 0,
+    });
   }
 }
 
@@ -3553,8 +3626,7 @@ function update(dt) {
     }
   }
 
-  // 以攻为守: 玩家子弹与敌弹接触双方消除 (激光是矩形不在此处)
-  // 子弹有穿透时, parry 也消耗 pierce, 可以连续消除多颗敌弹
+  // 反导射弹: 玩家子弹与敌弹接触双方消除. 穿透不影响消弹, 每颗玩家子弹最多抵消 1 颗敌弹.
   if (player.bulletParry) {
     for (let i = 0; i < bullets.length; i++) {
       const pb = bullets[i];
@@ -3654,8 +3726,15 @@ function update(dt) {
       const sp = 360;
       c.x += Math.cos(a) * sp * dt;
       c.y += Math.sin(a) * sp * dt;
+    } else if (c.lucky && c.autoDelay > 0) {
+      // 幸运金币: 先按普通金币向上爆散一小段时间, 再自动飞向玩家
+      c.autoDelay -= dt;
+      c.vx *= 0.96;
+      c.vy += GRAVITY * dt;
+      c.x += c.vx * dt;
+      c.y += c.vy * dt;
     } else if (c.lucky) {
-      // 幸运金币 / 红心: 无视磁吸范围与重力, 直接飞向玩家
+      // 幸运金币 / 红心: 爆散后无视磁吸范围与重力, 自动飞向玩家
       const a = Math.atan2(player.y - c.y, player.x - c.x);
       const sp = 360;
       c.x += Math.cos(a) * sp * dt;
@@ -3724,10 +3803,10 @@ function update(dt) {
           }
         }
         // Boss: 死亡时只掉剩余的一半 (随血掉一半已在 hitEnemy 触发)
-        // 镜像: 按玩家当前金币动态算 (上限 50)
+        // 镜像: 不掉落金币
         let dropAmount;
         if (e.boss) dropAmount = Math.max(0, e.coin - (e.coinDropped || 0));
-        else if (e.type === 'mirror') dropAmount = Math.min(200, Math.max(0, player.coin));
+        else if (e.type === 'mirror') dropAmount = 0;
         else dropAmount = e.coin;
         spawnCoins(e.x, e.y, dropAmount, !!(player.luckyCoins && e.killedByCrit));
         if (e.boss) spawnHeart(e.x, e.y);
