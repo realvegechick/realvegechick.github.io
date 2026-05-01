@@ -1190,7 +1190,7 @@ function showStartScreen() {
       <div class="start-title">几何空战</div>
       <div class="start-mode-row">
         <button id="easyBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">简单模式</button>
-                    <div class="start-mode-note">4血4盾，无诅咒、无负面代价</div>
+                    <div class="start-mode-note">4血4盾，降低敌人弹速，无诅咒、无负面代价</div>
         <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">普通模式</button>
       </div>
     </div>`;
@@ -2511,6 +2511,7 @@ function missileImpact(b, direct) {
 }
 
 function spawnEnemyBullet(x, y, a, sp, dmg) {
+  if (game.easyMode) sp *= 0.8;
   bullets.push({ x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, r: 5, dmg, from:'enemy' });
 }
 
