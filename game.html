@@ -1,11 +1,11 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>飞机大战 · 肉鸽</title>
+<title>几何空战 · Roguelite</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin:0; padding:0; width:100%; }
@@ -303,6 +303,106 @@
   }
   #startScreen .stats-grid b { color:#6cf; font-weight:600; }
   .helptext { font-size: clamp(9.5px, 2.2vmin, 11px); opacity:.55; margin-top: clamp(10px, 2.5vmin, 14px); line-height:1.7; }
+
+  /* 开始页美术 */
+  #startScreen {
+    position: relative;
+    width: min(92%, 460px);
+    min-height: min(70vh, 520px);
+    padding: clamp(22px, 5vmin, 34px) clamp(14px, 3.5vmin, 24px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border: 1px solid rgba(120, 170, 220, 0.25);
+    background:
+      radial-gradient(110% 90% at 50% 0%, rgba(90, 160, 240, 0.14), rgba(8, 10, 20, 0.86) 58%),
+      linear-gradient(160deg, rgba(8, 12, 24, 0.96), rgba(10, 10, 20, 0.96));
+    box-shadow: inset 0 0 0 1px rgba(180, 220, 255, 0.07), 0 18px 40px rgba(0, 0, 0, 0.45);
+  }
+  .start-geo {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .start-geo span {
+    position: absolute;
+    display: block;
+    border: 1px solid rgba(120, 185, 245, 0.28);
+    transform: rotate(45deg);
+    animation: geoDrift 7s ease-in-out infinite;
+  }
+  .start-geo span:nth-child(1) {
+    width: 150px; height: 150px; left: -60px; top: 12%;
+    animation-delay: -1.2s;
+  }
+  .start-geo span:nth-child(2) {
+    width: 110px; height: 110px; right: -38px; top: 26%;
+    border-color: rgba(255, 210, 120, 0.24);
+    animation-delay: -2.4s;
+  }
+  .start-geo span:nth-child(3) {
+    width: 180px; height: 180px; right: 16%; bottom: -88px;
+    border-color: rgba(160, 210, 255, 0.2);
+    animation-delay: -0.6s;
+  }
+  @keyframes geoDrift {
+    0%, 100% { transform: rotate(45deg) translateY(0); opacity: 0.26; }
+    50%      { transform: rotate(50deg) translateY(-8px); opacity: 0.5; }
+  }
+  .start-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(115, 160, 205, 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(115, 160, 205, 0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+    mask-image: radial-gradient(circle at 50% 42%, #000 30%, transparent 88%);
+    pointer-events: none;
+    opacity: 0.45;
+  }
+  .start-kicker {
+    position: relative;
+    z-index: 1;
+    color: rgba(170, 210, 245, 0.85);
+    font-size: clamp(10px, 2.2vmin, 12px);
+    letter-spacing: 3px;
+    margin-bottom: clamp(8px, 2vmin, 14px);
+  }
+  .start-title {
+    position: relative;
+    z-index: 1;
+    color: #d8ecff;
+    font-size: clamp(30px, 8.4vmin, 48px);
+    font-weight: 700;
+    letter-spacing: 6px;
+    text-shadow: 0 0 18px rgba(140, 200, 255, 0.3);
+    margin-bottom: clamp(8px, 1.8vmin, 14px);
+    line-height: 1;
+  }
+  .start-sub {
+    position: relative;
+    z-index: 1;
+    color: rgba(195, 225, 250, 0.8);
+    font-size: clamp(11px, 2.5vmin, 14px);
+    letter-spacing: 2px;
+    margin-bottom: clamp(22px, 5vmin, 34px);
+  }
+  #startBtn {
+    position: relative;
+    z-index: 1;
+    min-width: clamp(150px, 40vmin, 210px);
+    border-color: rgba(145, 200, 255, 0.65);
+    background: linear-gradient(180deg, rgba(42, 78, 118, 0.95), rgba(20, 45, 74, 0.95));
+    box-shadow: 0 0 0 1px rgba(185, 220, 255, 0.12) inset, 0 10px 24px rgba(3, 10, 20, 0.45);
+    letter-spacing: 4px;
+  }
+  #startBtn:hover {
+    background: linear-gradient(180deg, rgba(55, 98, 145, 0.96), rgba(26, 54, 88, 0.96));
+    border-color: rgba(175, 220, 255, 0.9);
+  }
 </style>
 </head>
 <body>
@@ -436,11 +536,11 @@ function comboTypeCount(round) {
 
 // 七宗罪诅咒: 仅当局生效, 散落到各处的检查点应用
 const CURSES = [
-  { id:'sloth',    n:'懒惰', desc:'弹速减半 / 移速减半' },
+  { id:'sloth',    n:'懒惰', desc:'弹速 -50%；移速 -50%' },
   { id:'gluttony', n:'暴食', desc:'飞机体型 ×1.5' },
   { id:'pride',    n:'傲慢', desc:'取消受击无敌时间' },
   { id:'wrath',    n:'愤怒', desc:'受伤翻倍' },
-  { id:'greed',    n:'贪婪', desc:'吸金范围 ×2; 主动拾取扣钱, 飞出屏幕的金币反而进账' },
+  { id:'greed',    n:'贪婪', desc:'吸金范围 ×2；主动拾取改为扣金币；飞出屏幕的金币会入账' },
   { id:'lust',     n:'色欲', desc:'敌弹略微被玩家吸引' },
   { id:'envy',     n:'嫉妒', desc:'消灭所有敌人后, 召唤一个镜像, 继承你的主要战斗属性' },
 ];
@@ -929,10 +1029,12 @@ function showStartScreen() {
   game.state = 'start';
   overlay.className = 'overlay show';
   overlay.innerHTML = `
-    <div id="startScreen" style="text-align:center;">
-      <div class="title" style="letter-spacing:6px; margin-bottom: clamp(8px, 2vmin, 14px)">飞 机 大 战</div>
-      <div class="subtitle" style="margin-bottom: clamp(24px, 6vmin, 38px)">拖 动 移 动 · 自 动 开 火</div>
-      <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px); letter-spacing:3px;">出 击</button>
+    <div id="startScreen">
+      <div class="start-grid"></div>
+      <div class="start-geo"><span></span><span></span><span></span></div>
+      <div class="start-kicker">GEOMETRIC AIR COMBAT</div>
+      <div class="start-title">几何空战</div>
+      <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">开始游戏</button>
     </div>`;
   document.getElementById('startBtn').onclick = startGame;
 }
@@ -1082,7 +1184,7 @@ function openBossEncounterIntro(kind) {
   let subtitle = '';
   let needBossCanvas = false;
   if (kind === 'first') {
-    title = '⚠ Boss 出 现';
+    title = '⚠ BOSS 出现';
     subtitle = '技能池 1 / 4';
     needBossCanvas = true;
     const info = ENEMY_INFO.boss;
@@ -1100,7 +1202,7 @@ function openBossEncounterIntro(kind) {
         <div class="ds">${skill.desc}</div>
       </div>`;
   } else if (kind === 'skill') {
-    title = '⚠ Boss 解 锁 新 技 能';
+    title = '⚠ BOSS 解锁新技能';
     subtitle = `技能池 ${game.bossEncounter} / 4`;
     const skill = BOSS_SKILLS[game.bossEncounter - 1];
     if (skill) {
@@ -1112,7 +1214,7 @@ function openBossEncounterIntro(kind) {
         </div>`;
     }
   } else if (kind === 'phase2') {
-    title = '⚠ Boss 觉 醒';
+    title = '⚠ BOSS 觉醒';
     subtitle = '更危险的形态等着你';
     cardsHtml += `
       <div class="card enemy-card">
@@ -1121,7 +1223,7 @@ function openBossEncounterIntro(kind) {
         <div class="ds">Boss 现在具备二阶段</div>
       </div>`;
   } else if (kind === 'cursed') {
-    title = '⚠ Boss 再 临';
+    title = '⚠ BOSS 再临';
     subtitle = '完全体 BOSS 与本波诅咒';
     needBossCanvas = true;
     cardsHtml += `
@@ -1138,7 +1240,7 @@ function openBossEncounterIntro(kind) {
     <div class="subtitle">${subtitle}</div>
     <div class="cards">${cardsHtml}</div>
     ${curse ? curse.html : ''}
-    <button id="introOk">准 备 就 绪</button>`;
+    <button id="introOk">准备开始</button>`;
   if (needBossCanvas) {
     const c = overlay.querySelector('.enemy-prev');
     if (c) {
@@ -2610,17 +2712,17 @@ const LEVEL_OPTIONS = [
     desc: () => {
       const cur = player.fireRate;
       const nxt = (base.fireRate + bonus.fireRate + 0.5) * Math.max(0.1, 1 + shopAdd.fireRatePct) * shopMul.fireRate;
-      return `基础射速 +0.5/s   ${cur.toFixed(2)} → ${nxt.toFixed(2)}/s`;
+      return `基础射速 +0.5   ${cur.toFixed(2)} → ${nxt.toFixed(2)}/s`;
     },
     apply: () => { bonus.fireRate += 0.5; recompute(); } },
   { n:'闪避率', icon:'▣',
     desc: () => {
       const cur = player.evade;
       const nxt = Math.min(0.80, cur + 0.06);
-      return `+6% (上限 80%)   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
+      return `+6%（上限 80%）   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
     apply: () => { player.evade = Math.min(0.80, player.evade + 0.06); } },
-  { n:'弹体', icon:'●',
+  { n:'弹体大小', icon:'●',
     desc: () => {
       const cur = player.bulletSize;
       const nxt = (base.bulletSize + bonus.bulletSize + 0.15) * Math.max(0.1, 1 + shopAdd.bulletSizePct) * shopMul.bulletSize;
@@ -2661,7 +2763,7 @@ function openLevelup() {
   overlay.className = 'overlay show';
   overlay.innerHTML = `
     <div class="title">⚡ 等级 ${game.level} → ${game.level + 1}</div>
-    <div class="subtitle">${pickWord()} · 升级基于初始基础值线性叠加</div>
+    <div class="subtitle">${pickWord()} · 升级提升基础属性</div>
     <div class="cards one-row" id="cards" style="--cols:${picks.length}"></div>`;
   const wrap = document.getElementById('cards');
   picks.forEach(p => {
@@ -2753,7 +2855,7 @@ const SHOP_UNIQUE = [
     can: p => !p.bulletParry,
     apply: p => { p.bulletParry = true; p.shield = 0; recompute(); } },
   { id:'hedonism', n:'罪恶快感', ico:'♥', cost:66, unique:true,
-    good:['每击杀 30 个敌人', '恢复 1 格生命'], bad:[],
+    good:['每击杀 30 个敌人，恢复 1 生命'], bad:[],
     apply: p => { p.killHealEnabled = true; } },
   { id:'guardian', n:'神圣守护', ico:'✦', cost:140, unique:true,
     good:['召唤两颗对位旋转的守护光球, 消除接触的敌方子弹, 撞击敌人造成基于 DPS 的伤害'], bad:[],
@@ -2763,7 +2865,7 @@ const SHOP_UNIQUE = [
     can: p => !p.sentinels,
     apply: p => { p.sentinels = true; initSentinels(); } },
   { id:'psybullet', n:'灵能导航', ico:'✺', cost:180, unique:true,
-    good:['你的主要攻击方式获得追踪效果'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
+    good:['主要攻击获得追踪效果'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
     can: p => p.homing < 2,
     buyCheck: p => (base.maxHp + bonus.maxHp) > 1,
     apply: p => {
@@ -2837,7 +2939,7 @@ const SHOP_UNIQUE = [
       if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
   { id:'missile', n:'死神飞弹', ico:'☠', cost:160, unique:true,
-    good:['每 3s 发射两枚飞弹, 间隔随攻速减小', '飞弹命中造成 20% 最大生命值伤害 (BOSS 为 1%)', '并造成基于攻击力的范围伤害'],
+    good:['每 3 秒发射两枚飞弹，间隔随攻速缩短', '命中造成最大生命伤害（小怪 20%，BOSS 1%），并造成基于攻击力的范围伤害'],
     bad:['无护盾遭到撞击将直接殉爆'],
     can: p => !p.missileLauncher,
     apply: p => { p.missileLauncher = true; p.missileT = 0; } },
@@ -2846,25 +2948,25 @@ const SHOP_UNIQUE = [
     can: p => !p.absoluteField,
     apply: p => { p.absoluteField = true; p.fieldTickT = 0; } },
   { id:'primalfire', n:'原初火焰', ico:'🜂', cost:150, unique:true,
-    good:['燃烧触发时额外造成最大生命伤害', '小怪 5%, BOSS 0.1%'],
+    good:['燃烧触发时附加最大生命伤害（小怪 5%，BOSS 0.1%）'],
     bad:['燃烧触发频率减半'],
     can: p => !p.primalFire,
     apply: p => { p.primalFire = true; } },
-  { id:'alleye', n:'全视之眼', ico:'👁', cost:130, unique:true, maxRound:5,
+  { id:'alleye', n:'全视之眼', ico:'👁', cost:130, unique:true,
     good:['所有三选一改为四选一 (升级 / 商店 / 神器槽位)'], bad:[],
     can: p => !p.allSeeingEye,
     apply: p => { p.allSeeingEye = true; } },
-  { id:'lucky', n:'幸运金币', ico:'☘', cost:77, unique:true, maxRound:5,
+  { id:'lucky', n:'幸运金币', ico:'☘', cost:77, unique:true,
     good:['暴击杀死敌人时, 该敌人掉落的金币自动拾取'], bad:[],
     can: p => !p.luckyCoins,
     apply: p => { p.luckyCoins = true; } },
   { id:'devilcontract', n:'恶魔契约', ico:'⛓', cost:130, unique:true,
-    good:['1 HP 且无盾时: 攻击 +5、射速 +5、燃烧 +5、弹道 +2 (最终修正)'],
-    bad:['1 HP 时: 护盾恢复延迟 = ∞'],
+    good:['生命为 1 且无护盾时：攻击 +5、射速 +5、燃烧 +5、弹道 +2（最终修正）'],
+    bad:['生命为 1 时：护盾恢复延迟 = ∞'],
     can: p => !p.devilContract,
     apply: p => { p.devilContract = true; refreshDevilContract(); } },
   { id:'devilpower', n:'诅咒之力', ico:'⛧', cost:200, unique:true, minRound:6,
-    good:['深度暴击: 暴击率 ≥ 100% 时溢出再次暴击 (伤害 ×暴伤²)'], bad:['每波开始额外背负一个诅咒'],
+    good:['深度暴击：暴击率超过 100% 时可再次暴击（伤害 × 暴伤²）'], bad:['每波开始额外背负一个诅咒'],
     apply: p => { p.deepCrit = true; p.devilPower = true; } },
 ];
 
@@ -2879,7 +2981,7 @@ const ENEMY_INFO = {
   interceptor: { name:'拦截机',  color:'#ffaa00', desc:'从屏幕侧面出现, 锁定玩家出场位置直线高速冲撞' },
   spiker:      { name:'钉刺机',  color:'#aaff66', desc:'从屏幕下方慢速向上飞行' },
   gunship:     { name:'重炮舰',  color:'#ff8844', desc:'厚甲慢速, 持续输出五连扇形散射' },
-  boss:        { name:'BOSS',    color:'#ff4488', desc:'入场期间无敌, 四阶段循环含横扫激光' },
+  boss:        { name:'BOSS',    color:'#ff4488', desc:'入场期间无敌，含横扫激光' },
 };
 
 function openEnemyIntro(types) {
@@ -2901,7 +3003,7 @@ function openEnemyIntro(types) {
     <div class="subtitle">${curse ? '本波将出现以下敌人, 并背负诅咒' : '本波将出现以下新敌人'}</div>
     <div class="cards">${cards}</div>
     ${curse ? curse.html : ''}
-    <button id="introOk">准 备 就 绪</button>`;
+    <button id="introOk">准备开始</button>`;
   overlay.querySelectorAll('.enemy-prev').forEach(c => {
     const t = c.dataset.type;
     const info = ENEMY_INFO[t];
@@ -2939,7 +3041,7 @@ function openWaveComboIntro(types) {
     <div class="subtitle">${curse ? '本波由以下敌人混合组成, 并背负诅咒' : '本波由以下敌人混合组成'}</div>
     <div class="cards">${cards}</div>
     ${curse ? curse.html : ''}
-    <button id="introOk">准 备 就 绪</button>`;
+    <button id="introOk">准备开始</button>`;
   overlay.querySelectorAll('.enemy-prev').forEach(c => {
     const t = c.dataset.type;
     const info = ENEMY_INFO[t];
@@ -3042,17 +3144,17 @@ function renderShop() {
   const bossNext = !isBossClear && game.wave === game.wavesPerRound;
 
   overlay.innerHTML = `
-    <div class="title">${isBossClear ? '★ Boss 已被击败' : '🛒 装备商店'}</div>
-    <div class="subtitle">${isBossClear ? '准备进入第 ' + game.round + ' 轮' : '选购或直接开始下一波'}${game.endless && priceMul > 1 ? ' · 无尽价格 ×' + priceMul.toFixed(2) : ''}</div>
+    <div class="title">${isBossClear ? '★ BOSS 已被击败' : '🛒 商店'}</div>
+    <div class="subtitle">${isBossClear ? '准备进入第 ' + game.round + ' 轮' : '购买道具或直接开始下一波'}${game.endless && priceMul > 1 ? ' · 无尽价格 ×' + priceMul.toFixed(2) : ''}</div>
     ${bossNext ? '<div style="color:#ffd06a; font-weight:bold; text-align:center; margin: 4px 0 8px; font-size: clamp(11px, 2.4vmin, 13px); text-shadow: 0 0 8px rgba(255,200,80,0.6);">⚠ BOSS 即将来袭 ⚠</div>' : ''}
-    <div id="ovCoin">金币: ${player.coin}</div>
+    <div id="ovCoin">金币：${player.coin}</div>
     <div class="section-label">神 器</div>
     <div class="cards one-row" id="uniqueSlotsRow" style="--cols:${pickCount()}"></div>
     <div class="section-label" style="color:#a4dfff">商 品</div>
     <div class="cards one-row" id="normalCards" style="--cols:${pickCount()}"></div>
     <div class="shop-actions">
-      <button id="repairBtn">战斗维修 (20金 +1HP)</button>
-      <button id="refreshBtn">刷新 (${game.shopRefreshCost}金)</button>
+      <button id="repairBtn">战斗维修（20 金，+1 生命）</button>
+      <button id="refreshBtn">刷新（${game.shopRefreshCost} 金）</button>
     </div>
     <button id="ovClose">${isBossClear ? '开始下一轮' : '开始下一波'}</button>`;
 
@@ -3255,7 +3357,7 @@ function openUniqueChoice() {
   }
   overlay.className = 'overlay show';
   overlay.innerHTML = `
-    <div class="title">★ Boss 已被击败</div>
+    <div class="title">★ BOSS 已被击败</div>
     <div class="subtitle">${pickWord()}解锁神器</div>
     <div class="cards one-row" id="uniqueChoices" style="--cols:${picks.length}"></div>`;
   const wrap = document.getElementById('uniqueChoices');
@@ -3368,10 +3470,22 @@ function buildStatsHtml() {
     sentinel: '镭射哨兵', guardian: '神圣守护', missile: '死神飞弹',
     field: '绝对领域',
   };
-  const dmgEntries = Object.entries(game.stats.damage)
+  const dmgItems = Object.entries(game.stats.damage)
     .filter(([_, v]) => v > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => `<div>${dmgLabels[k] || k}: ${Math.round(v).toLocaleString()}</div>`)
+    .sort((a, b) => b[1] - a[1]);
+  const dmgMax = dmgItems.length ? dmgItems[0][1] : 0;
+  const dmgEntries = dmgItems
+    .map(([k, v]) => {
+      const label = dmgLabels[k] || k;
+      const value = Math.round(v).toLocaleString();
+      const ratio = dmgMax > 0 ? Math.max(0.02, v / dmgMax) : 0;
+      return `<div style="display:flex;flex-direction:column;gap:3px">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span>${label}</span><span style="opacity:0.9">${value}</span></div>
+        <div style="height:7px;background:#1b2230;border:1px solid #2c3a50;border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${(ratio*100).toFixed(1)}%;background:linear-gradient(90deg,#57a8ff,#9fd7ff)"></div>
+        </div>
+      </div>`;
+    })
     .join('');
   const uniqueEntries = game.stats.uniquesBought
     .map(u => `<span style="margin-right:10px">${u.ico} ${u.n}</span>`)
@@ -3388,7 +3502,7 @@ function buildStatsHtml() {
   const elapsedStr = hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${mm}:${pad(ss)}`;
   const blocks = [];
   blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#cfe;font-weight:bold;margin-bottom:4px">⏱ 用时</div><div>${elapsedStr}</div></div>`);
-  if (dmgEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffaa66;font-weight:bold;margin-bottom:4px">💥 伤害统计</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px">${dmgEntries}</div></div>`);
+  if (dmgEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffaa66;font-weight:bold;margin-bottom:6px">💥 伤害统计</div><div style="display:flex;flex-direction:column;gap:7px">${dmgEntries}</div></div>`);
   if (uniqueEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffd06a;font-weight:bold;margin-bottom:4px">⚜ 神器</div><div style="line-height:1.7">${uniqueEntries}</div></div>`);
   if (shopEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#a4dfff;font-weight:bold;margin-bottom:4px">🛍 普通道具</div><div style="line-height:1.7">${shopEntries}</div></div>`);
   return `<div style="display:flex;flex-direction:column;gap:8px;max-width:380px;width:90%;margin:8px auto;font-size:clamp(10px,2vmin,12px);text-align:left">${blocks.join('')}</div>`;
@@ -3418,7 +3532,7 @@ function enterEndlessMode() {
   game.endless = true;
   game.round = 11;
   game.wave = 1;
-  openShop(true);
+  openUniqueChoice();
 }
 
 function onGameOver() {
@@ -3436,7 +3550,7 @@ function onGameOver() {
       <div class="title">飞机坠毁</div>
       <div class="subtitle">坚持到第 ${game.round} 轮 · 第 ${game.wave} 波</div>
       ${buildStatsHtml()}
-      <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; align-items:center; margin-top:6px">
+      <div style="display:flex; flex-direction:column; gap:8px; align-items:center; margin-top:6px">
         ${canRetry ? `<button id="retryBtn" style="padding: clamp(11px, 2.8vmin, 16px) clamp(30px, 7vmin, 48px); font-size: clamp(14px, 3vmin, 17px); border-color:#6cf; box-shadow:0 0 18px rgba(102,200,255,.22);">重试本波</button>` : ''}
         <button id="restart" style="padding: clamp(5px, 1.4vmin, 8px) clamp(12px, 3vmin, 18px); font-size: clamp(10px, 2.2vmin, 12px); background:#5a1a1a; color:#ffd6d6; border-color:#9a3a3a;">放弃尝试</button>
       </div>`;
@@ -4635,3 +4749,4 @@ showStartScreen();
 </script>
 </body>
 </html>
+
