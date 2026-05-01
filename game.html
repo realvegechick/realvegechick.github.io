@@ -478,7 +478,6 @@ let bgmBufferLoading = null;
 let bgmSource = null;
 
 function ensureBgmContext() {
-  if (isMobileAudioHost) return false;
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return false;
   if (!bgmCtx) {
@@ -560,7 +559,6 @@ async function ensureBgm() {
 
 function nudgeHtmlBgm() {
   if (document.hidden) return;
-  if (bgm.readyState < 2) bgm.load();
   if (bgm.paused || bgm.ended) ensureBgm();
 }
 
@@ -574,23 +572,16 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', () => {
   if (game.state === 'playing' || game.state === 'collecting') ensureBgm();
 });
-['waiting', 'stalled', 'suspend', 'abort', 'error'].forEach(ev => {
-  bgm.addEventListener(ev, () => {
-    if (isMobileAudioHost && (game.state === 'playing' || game.state === 'collecting')) {
-      setTimeout(nudgeHtmlBgm, 250);
-    }
-  });
-});
+
 bgm.addEventListener('ended', () => {
   if (!document.hidden && (game.state === 'playing' || game.state === 'collecting')) ensureBgm();
 });
 setInterval(() => {
   if (document.hidden) return;
   if (game.state === 'playing' || game.state === 'collecting') {
-    if (isMobileAudioHost) nudgeHtmlBgm();
-    else ensureBgm();
+    ensureBgm();
   }
-}, 4000);
+}, 10000);
 
 const rand = (a,b) => a + Math.random()*(b-a);
 const randInt = (a,b) => Math.floor(rand(a,b+1));
