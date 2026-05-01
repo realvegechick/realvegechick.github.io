@@ -2509,7 +2509,7 @@ function collideKill() {
     player.shieldRegenT = 0;
     let inv = game.activeCurses.has('pride') ? 0 : 0.8;
     game.shake = 0.45;
-    floats.push({ x: player.x, y: player.y, t: 0.7, life: 0.7, txt: '盾被击破!', color: '#7df', size: 14 });
+    floats.push({ x: player.x, y: player.y, t: 0.75, life: 0.75, txt: '撞击破盾！', color: '#7df', size: 14 });
     // 排斥力场: 盾被击破也算受到伤害, 触发后无敌延长到 1.0
     if (player.shockwaveOnHit) {
       spawnShockwave(player.x, player.y, 220);
