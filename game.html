@@ -308,18 +308,16 @@
   #startScreen {
     position: relative;
     width: min(92%, 460px);
-    min-height: min(70vh, 520px);
+    min-height: min(64vh, 500px);
     padding: clamp(22px, 5vmin, 34px) clamp(14px, 3.5vmin, 24px);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    border: 1px solid rgba(120, 170, 220, 0.25);
-    background:
-      radial-gradient(110% 90% at 50% 0%, rgba(90, 160, 240, 0.14), rgba(8, 10, 20, 0.86) 58%),
-      linear-gradient(160deg, rgba(8, 12, 24, 0.96), rgba(10, 10, 20, 0.96));
-    box-shadow: inset 0 0 0 1px rgba(180, 220, 255, 0.07), 0 18px 40px rgba(0, 0, 0, 0.45);
+    border: none;
+    background: transparent;
+    box-shadow: none;
   }
   .start-geo {
     position: absolute;
@@ -361,7 +359,7 @@
     background-size: 24px 24px;
     mask-image: radial-gradient(circle at 50% 42%, #000 30%, transparent 88%);
     pointer-events: none;
-    opacity: 0.45;
+    opacity: 0.35;
   }
   .start-kicker {
     position: relative;
@@ -398,6 +396,38 @@
     background: linear-gradient(180deg, rgba(42, 78, 118, 0.95), rgba(20, 45, 74, 0.95));
     box-shadow: 0 0 0 1px rgba(185, 220, 255, 0.12) inset, 0 10px 24px rgba(3, 10, 20, 0.45);
     letter-spacing: 4px;
+  }
+  #easyBtn {
+    position: relative;
+    z-index: 1;
+    min-width: clamp(180px, 42vmin, 230px);
+    border-color: rgba(145, 200, 255, 0.65);
+    background: linear-gradient(180deg, rgba(34, 92, 64, 0.95), rgba(18, 56, 38, 0.95));
+    box-shadow: 0 0 0 1px rgba(185, 220, 255, 0.12) inset, 0 10px 24px rgba(3, 10, 20, 0.45);
+    letter-spacing: 4px;
+  }
+  #easyBtn:hover {
+    background: linear-gradient(180deg, rgba(44, 116, 80, 0.96), rgba(24, 70, 48, 0.96));
+    border-color: rgba(175, 220, 255, 0.9);
+  }
+  .start-mode-row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .start-mode-note {
+    margin-top: -2px;
+    margin-bottom: 4px;
+    font-size: clamp(10px, 2.1vmin, 12px);
+    color: rgba(200, 236, 210, 0.9);
+    opacity: 0.92;
+    letter-spacing: 1px;
+  }
+  .start-mode-row button {
+    min-width: clamp(180px, 42vmin, 230px);
   }
   #startBtn:hover {
     background: linear-gradient(180deg, rgba(55, 98, 145, 0.96), rgba(26, 54, 88, 0.96));
@@ -471,6 +501,7 @@ function getBossVertices(e) {
 
 const game = {
   state: 'start',
+  easyMode: false,
   round: 1, wave: 1,
   wavesPerRound: 4,
   level: 1,
@@ -652,7 +683,7 @@ function recompute() {
   player.bulletSize = Math.max(0.1, (base.bulletSize + bonus.bulletSize) * Math.max(0.1, 1 + shopAdd.bulletSizePct) * shopMul.bulletSize);
   player.spread = Math.max(0.02, base.spread * shopMul.spread);
   // 以攻为守: 永久禁用护盾
-  if (player.bulletParry) { player.maxShield = 0; player.shield = 0; }
+  if (player.bulletParry && !game.easyMode) { player.maxShield = 0; player.shield = 0; }
   // 当前激活诅咒的实时效果 (单/多张, 每波刷新)
   if (game.activeCurses.has('sloth')) {
     player.bulletSpeed *= 0.5;
@@ -1044,21 +1075,34 @@ function showStartScreen() {
       <div class="start-geo"><span></span><span></span><span></span></div>
       <div class="start-kicker">GEOMETRIC AIR COMBAT</div>
       <div class="start-title">几何空战</div>
-      <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">开始游戏</button>
+      <div class="start-mode-row">
+        <button id="easyBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">简单模式</button>
+                    <div class="start-mode-note">4血4盾，无诅咒、无负面代价</div>
+        <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">普通模式</button>
+      </div>
     </div>`;
-  document.getElementById('startBtn').onclick = startGame;
+  document.getElementById('startBtn').onclick = () => startGame(false);
+  document.getElementById('easyBtn').onclick = () => startGame(true);
 }
 
-function startGame() {
+function startGame(easy = false) {
   ensureBgm();
   overlay.className = 'overlay';
   overlay.innerHTML = '';
   game.state = 'playing';
+  game.easyMode = !!easy;
   game.endless = false;
   game.round = 1; game.wave = 1;
   game.level = 1; game.killCount = 0;
   game.killForLevel = expNeeded(game.level);
   game.introduced.clear();
+  if (game.easyMode) {
+    base.maxHp = 4;
+    base.maxShield = 4;
+    recompute();
+    player.hp = player.maxHp;
+    player.shield = Math.max(0, player.maxShield);
+  }
   player.x = W/2; player.y = H-100;
   enemies.length = 0; bullets.length = 0;
   particles.length = 0; coins.length = 0; floats.length = 0;
@@ -1143,6 +1187,7 @@ function drawCurse(exclude) {
 
 // round >= 6 或玩家拥有恶魔之力时抽诅咒, 恶魔之力时抽 2 张不同 id (池子不足则只抽 1)
 function getMaybeCurseCard() {
+  if (game.easyMode) return null;
   if (game.round < 6 && !player.devilPower) return null;
   const first = drawCurse();
   if (!first) return null;  // 全部被除厄禁掉
@@ -1174,10 +1219,33 @@ function getMaybeCurseCard() {
     html: `
       <div class="curse-section">
         <div class="curse-label">☠ 诅 咒 降 临${ids.length > 1 ? ' (恶魔之力 ×2)' : ''} ☠</div>
-        <div class="cards" style="max-width:${cardsMax}px; margin:0 auto">${curseHtmls}</div>
+        <div class="cards one-row" style="--cols:${ids.length};max-width:${cardsMax}px;margin:0 auto">${curseHtmls}</div>
         <div class="curse-particles">${particles}</div>
       </div>`,
   };
+}
+
+function normalizeEasyModeAfterPurchase(prev) {
+  if (!game.easyMode) return;
+  bonus.maxHp = Math.max(0, bonus.maxHp);
+  bonus.maxShield = Math.max(0, bonus.maxShield);
+  shopAdd.atkPct = Math.max(0, shopAdd.atkPct);
+  shopAdd.fireRatePct = Math.max(0, shopAdd.fireRatePct);
+  shopAdd.bulletSpeedPct = Math.max(0, shopAdd.bulletSpeedPct);
+  shopAdd.moveSpeedPct = Math.max(0, shopAdd.moveSpeedPct);
+  shopAdd.bulletSizePct = Math.max(0, shopAdd.bulletSizePct);
+  shopMul.atk = Math.max(1, shopMul.atk);
+  shopMul.fireRate = Math.max(1, shopMul.fireRate);
+  shopMul.bulletSpeed = Math.max(1, shopMul.bulletSpeed);
+  shopMul.moveSpeed = Math.max(1, shopMul.moveSpeed);
+  shopMul.bulletSize = Math.max(1, shopMul.bulletSize);
+  player.shieldRegenDelayBase = Math.min(player.shieldRegenDelayBase, 3.0);
+  player.shieldRegenInterval = Math.min(player.shieldRegenInterval, 2.5);
+  recompute();
+  if (prev) {
+    player.hp = Math.max(player.hp, prev.hp);
+    player.shield = Math.max(player.shield, prev.shield);
+  }
 }
 
 // 激活诅咒 (一张或多张, 覆盖上波). 所有效果在 recompute / 事件点实时读取 game.activeCurses
@@ -1191,6 +1259,7 @@ function setActiveCurses(ids) {
 function openBossEncounterIntro(kind) {
   game.state = 'enemyIntro';
   let cardsHtml = '';
+  let cardsCount = 0;
   let title = '';
   let subtitle = '';
   let needBossCanvas = false;
@@ -1205,6 +1274,7 @@ function openBossEncounterIntro(kind) {
         <div class="nm">${info.name}</div>
         <div class="ds">${info.desc}</div>
       </div>`;
+    cardsCount++;
     const skill = BOSS_SKILLS[0];
     cardsHtml += `
       <div class="card enemy-card">
@@ -1212,6 +1282,7 @@ function openBossEncounterIntro(kind) {
         <div class="nm" style="color:#ff7777">${skill.name}</div>
         <div class="ds">${skill.desc}</div>
       </div>`;
+    cardsCount++;
   } else if (kind === 'skill') {
     title = '⚠ BOSS 解锁新技能';
     subtitle = `技能池 ${game.bossEncounter} / 4`;
@@ -1223,6 +1294,7 @@ function openBossEncounterIntro(kind) {
           <div class="nm" style="color:#ff7777">${skill.name}</div>
           <div class="ds">${skill.desc}</div>
         </div>`;
+      cardsCount++;
     }
   } else if (kind === 'phase2') {
     title = '⚠ BOSS 觉醒';
@@ -1233,6 +1305,7 @@ function openBossEncounterIntro(kind) {
         <div class="nm" style="color:#ff7777">二阶段</div>
         <div class="ds">Boss 现在具备二阶段</div>
       </div>`;
+    cardsCount++;
   } else if (kind === 'cursed') {
     title = '⚠ BOSS 再临';
     subtitle = '完全体 BOSS 与本波诅咒';
@@ -1243,13 +1316,14 @@ function openBossEncounterIntro(kind) {
         <div class="nm">${ENEMY_INFO.boss.name}</div>
         <div class="ds">完全体, 二阶段已觉醒</div>
       </div>`;
+    cardsCount++;
   }
   const curse = getMaybeCurseCard();
   overlay.className = 'overlay show';
   overlay.innerHTML = `
     <div class="title">${title}</div>
     <div class="subtitle">${subtitle}</div>
-    <div class="cards">${cardsHtml}</div>
+    <div class="cards one-row" style="--cols:${Math.max(1, cardsCount)};max-width:${Math.max(180, cardsCount * 165)}px;margin:0 auto">${cardsHtml}</div>
     ${curse ? curse.html : ''}
     <button id="introOk">准备开始</button>`;
   if (needBossCanvas) {
@@ -2525,7 +2599,7 @@ function collideKill() {
       return;
     }
     // 死神飞弹殉爆: 无盾被撞 → 飞弹在玩家身上引爆, 直接死亡
-    if (player.missileLauncher) {
+    if (!game.easyMode && player.missileLauncher) {
       spawnMissileFlash(player.x, player.y, MISSILE_AOE_R);
       addExplosion(player.x, player.y, '#ff8050', 40);
       addExplosion(player.x, player.y, '#fff0c0', 18);
@@ -3012,7 +3086,7 @@ function openEnemyIntro(types) {
   overlay.innerHTML = `
     <div class="title">⚠ 新敌情报</div>
     <div class="subtitle">${curse ? '本波将出现以下敌人, 并背负诅咒' : '本波将出现以下新敌人'}</div>
-    <div class="cards">${cards}</div>
+    <div class="cards one-row" style="--cols:${Math.max(1, types.length)};max-width:${Math.max(180, types.length * 165)}px;margin:0 auto">${cards}</div>
     ${curse ? curse.html : ''}
     <button id="introOk">准备开始</button>`;
   overlay.querySelectorAll('.enemy-prev').forEach(c => {
@@ -3050,7 +3124,7 @@ function openWaveComboIntro(types) {
   overlay.innerHTML = `
     <div class="title">⚔ 即 将 来 袭</div>
     <div class="subtitle">${curse ? '本波由以下敌人混合组成, 并背负诅咒' : '本波由以下敌人混合组成'}</div>
-    <div class="cards">${cards}</div>
+    <div class="cards one-row" style="--cols:${Math.max(1, types.length)};max-width:${Math.max(180, types.length * 165)}px;margin:0 auto">${cards}</div>
     ${curse ? curse.html : ''}
     <button id="introOk">准备开始</button>`;
   overlay.querySelectorAll('.enemy-prev').forEach(c => {
@@ -3233,8 +3307,10 @@ function makeNormalCard(p, idx) {
   el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${p.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${cost} 金</div>`;
   el.onclick = () => {
     if (!canBuy) return;
+    const prev = { hp: player.hp, shield: player.shield };
     player.coin -= cost;
     p.apply(player);
+    normalizeEasyModeAfterPurchase(prev);
     game.stats.shopBought[p.n] = (game.stats.shopBought[p.n] || 0) + 1;
     game.shopNormalPicks[idx] = null;
     renderShop();
@@ -3259,8 +3335,10 @@ function makeUniqueSlotCard(it, slotIdx) {
   el.innerHTML = `<div class="ico">${it.ico}</div><div class="nm">${it.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${cost} 金</div>`;
   el.onclick = () => {
     if (!canBuy) return;
+    const prev = { hp: player.hp, shield: player.shield };
     player.coin -= cost;
     it.apply(player);
+    normalizeEasyModeAfterPurchase(prev);
     if (it.id) player.uniqueOwned[it.id] = true;
     game.stats.uniquesBought.push({ n: it.n, ico: it.ico });
     // 从 uniqueSlots 移除
@@ -3534,6 +3612,11 @@ function onGameVictory() {
     <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:8px">
       <button id="homeBtn">回到首页</button>
       <button id="endlessBtn">无尽模式</button>
+    </div>
+    <div style="display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:12px">
+      <a href="https://v.wjx.cn/vm/r0UUnQT.aspx#" target="_blank" rel="noreferrer"
+         style="display:inline-block; padding:8px 16px; border:1px solid #6cf; border-radius:4px; color:#dff4ff; text-decoration:none; background:rgba(25,35,52,.88); box-shadow:0 0 14px rgba(102,200,255,.18);">向作者反馈</a>
+      <div style="font-size:clamp(10px,2.2vmin,12px); opacity:0.78; text-align:center">拜托了，你的反馈就是我最大的动力QAQ</div>
     </div>`;
   document.getElementById('homeBtn').onclick = showStartScreen;
   document.getElementById('endlessBtn').onclick = enterEndlessMode;
@@ -3564,6 +3647,11 @@ function onGameOver() {
       <div style="display:flex; flex-direction:column; gap:8px; align-items:center; margin-top:6px">
         ${canRetry ? `<button id="retryBtn" style="padding: clamp(11px, 2.8vmin, 16px) clamp(30px, 7vmin, 48px); font-size: clamp(14px, 3vmin, 17px); border-color:#6cf; box-shadow:0 0 18px rgba(102,200,255,.22);">重试本波</button>` : ''}
         <button id="restart" style="padding: clamp(5px, 1.4vmin, 8px) clamp(12px, 3vmin, 18px); font-size: clamp(10px, 2.2vmin, 12px); background:#5a1a1a; color:#ffd6d6; border-color:#9a3a3a;">放弃尝试</button>
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:12px">
+        <a href="https://v.wjx.cn/vm/r0UUnQT.aspx#" target="_blank" rel="noreferrer"
+           style="display:inline-block; padding:8px 16px; border:1px solid #6cf; border-radius:4px; color:#dff4ff; text-decoration:none; background:rgba(25,35,52,.88); box-shadow:0 0 14px rgba(102,200,255,.18);">向作者反馈</a>
+        <div style="font-size:clamp(10px,2.2vmin,12px); opacity:0.78; text-align:center">拜托了，你的反馈就是我最大的动力QAQ</div>
       </div>`;
     if (canRetry) document.getElementById('retryBtn').onclick = retryWave;
     document.getElementById('restart').onclick = showStartScreen;
@@ -3671,7 +3759,7 @@ function update(dt) {
     player.shieldRegenT = 0;
   } else if (player.shield < player.maxShield) {
     // 恶魔契约: 1 HP 时延迟视为 ∞, 完全停止护盾再生
-    if (player.devilContract && player.hp === 1) {
+    if (!game.easyMode && player.devilContract && player.hp === 1) {
       player.shieldRegenT = 0;
     } else {
       player.shieldRegenT += dt;
