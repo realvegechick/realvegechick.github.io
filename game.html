@@ -589,6 +589,15 @@ const choice = a => a[Math.floor(Math.random()*a.length)];
 const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 const TAU = Math.PI * 2;
+const angleNorm = a => {
+  while (a > Math.PI) a -= TAU;
+  while (a < -Math.PI) a += TAU;
+  return a;
+};
+function inertiaFireRot() {
+  // 惯性模式下实际用于发射与绘制的偏转角
+  return game.inertiaBody ? player.aimRot : 0;
+}
 
 function pointToLineDist(px, py, x1, y1, x2, y2) {
   const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
@@ -615,6 +624,8 @@ function getBossVertices(e) {
 const game = {
   state: 'start',
   easyMode: false,
+  inertiaBullet: false,
+  inertiaBody: false,
   round: 1, wave: 1,
   wavesPerRound: 4,
   level: 1,
@@ -751,6 +762,10 @@ const player = {
   // baseMagnetRange 由商店"磁铁核心"修改; magnetRange 为派生字段, recompute 中按 activeCurse 计算
   baseMagnetRange: 90, magnetRange: 90,
   coin: 0, invuln: 0,
+  vx: 0, vy: 0,
+  inertiaVx: 0, inertiaVy: 0,
+  aimOmega: 0,
+  aimRot: 0, tailRot: 0,
   knockVx: 0, knockVy: 0, knockT: 0,
   // 独特道具开关 / 状态
   shockwaveOnHit: false,
@@ -769,6 +784,8 @@ const player = {
   missileLauncher: false, missileT: 0,
   // 时空断裂: 闪避时取消盾延迟 + 暂停敌方 0.5 秒
   timeRift: false,
+  // 曲率引擎: 取消移速限制, 但重力场(吸附)失效
+  curvatureEngine: false,
   // 引力掌握: 主攻击改为环绕自身, 覆盖追踪
   gravityMastery: false,
   // 闭锁空间: 主要攻击可在首次触边时反弹一次
@@ -798,6 +815,7 @@ function recompute() {
   player.bulletSpeed = (base.bulletSpeed + bonus.bulletSpeed) * Math.max(0.2, 1 + shopAdd.bulletSpeedPct) * shopMul.bulletSpeed;
   if (player.gravityMastery) player.bulletSpeed *= 0.5;
   player.moveSpeed = (base.moveSpeed + bonus.moveSpeed) * Math.max(0.2, 1 + shopAdd.moveSpeedPct) * shopMul.moveSpeed;
+  if (player.curvatureEngine) player.moveSpeed = Infinity;
   player.bulletSize = Math.max(0.1, (base.bulletSize + bonus.bulletSize) * Math.max(0.1, 1 + shopAdd.bulletSizePct) * shopMul.bulletSize);
   player.spread = Math.max(0.02, base.spread * shopMul.spread);
   // 以攻为守: 永久禁用护盾
@@ -1146,6 +1164,10 @@ function rollInitialStats() {
   player.baseMagnetRange = 90; player.magnetRange = 90;
   player.shieldRegenInterval = 2.5;
   player.coin = 0; player.invuln = 0;
+  player.vx = 0; player.vy = 0;
+  player.inertiaVx = 0; player.inertiaVy = 0;
+  player.aimOmega = 0;
+  player.aimRot = 0; player.tailRot = 0;
   player.shieldDelay = 0; player.shieldRegenT = 0;
   player.shotCD = 0;
   player.knockVx = 0; player.knockVy = 0; player.knockT = 0;
@@ -1154,6 +1176,8 @@ function rollInitialStats() {
   player.killHealEnabled = false; player.killHealCounter = 0;
   player.guardian = null;
   player.uniqueOwned = {};
+  // 调试关闭: 不再默认拥有「超能光束」
+  // 调试关闭: 不再默认拥有「曲率引擎」
   player.uniqueSlots = [];
   player.bigForm = false;
   player.cyclops = false; player.cyclopsAtkMul = 1;
@@ -1161,6 +1185,7 @@ function rollInitialStats() {
   player.absoluteField = false; player.fieldTickT = 0;
   player.missileLauncher = false; player.missileT = 0;
   player.timeRift = false;
+  player.curvatureEngine = false;
   player.gravityMastery = false;
   player.lockSpace = false;
   player.luckyCoins = false;
@@ -1200,18 +1225,28 @@ function showStartScreen() {
         <button id="easyBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">简单模式</button>
                     <div class="start-mode-note">4血4盾，降低敌人弹速，无诅咒、无负面代价</div>
         <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">普通模式</button>
+        <label class="start-mode-note" style="display:flex; align-items:center; gap:8px; justify-content:center; margin-top:6px">
+          <input type="checkbox" id="inertiaBodyChk" />
+          <span>物理模拟（飞机物理摆动并影响发射偏角）</span>
+        </label>
       </div>
     </div>`;
-  document.getElementById('startBtn').onclick = () => startGame(false);
-  document.getElementById('easyBtn').onclick = () => startGame(true);
+  const readInertia = () => ({
+    inertiaBody: !!document.getElementById('inertiaBodyChk')?.checked,
+  });
+  document.getElementById('startBtn').onclick = () => startGame('normal', readInertia());
+  document.getElementById('easyBtn').onclick = () => startGame('easy', readInertia());
 }
 
-function startGame(easy = false) {
+function startGame(mode = 'normal', opts = {}) {
   ensureBgm();
   overlay.className = 'overlay';
   overlay.innerHTML = '';
   game.state = 'playing';
-  game.easyMode = !!easy;
+  game.easyMode = mode === 'easy';
+  game.inertiaBullet = false;
+  game.inertiaBody = !!opts.inertiaBody;
+  if (player.curvatureEngine) game.inertiaBullet = true;
   game.endless = false;
   game.round = 1; game.wave = 1;
   game.level = 1; game.killCount = 0;
@@ -1225,6 +1260,10 @@ function startGame(easy = false) {
     player.shield = Math.max(0, player.maxShield);
   }
   player.x = W/2; player.y = H-100;
+  player.vx = 0; player.vy = 0;
+  player.inertiaVx = 0; player.inertiaVy = 0;
+  player.aimOmega = 0;
+  player.aimRot = 0; player.tailRot = 0;
   enemies.length = 0; bullets.length = 0;
   particles.length = 0; coins.length = 0; floats.length = 0;
   shockwaves.length = 0;
@@ -2140,12 +2179,13 @@ function fire() {
   // 独眼形态: 攻击形态变为蓄力激光, 不再生成子弹 (激光由 updatePlayerLaser 每帧维护)
   if (player.cyclops) return;
   const n = player.projectiles;
+  const baseAim = -Math.PI / 2 + inertiaFireRot();
   // player.spread = 基础相邻弹道夹角. 每多一弹道总扩散 +spread (受集中射击影响)
   const totalSpread = Math.max(0, n - 1) * player.spread;
   const orbitR = 90; // 与初始拾取金币半径一致
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : (i / (n - 1) - 0.5);
-    const a = -Math.PI/2 + t * totalSpread;
+    const a = baseAim + t * totalSpread;
     // 深度暴击 (恶魔之力): 暴击率 ≥ 100% 时整数层必定暴击, 小数部分判额外一次
     let critCount;
     if (player.deepCrit) {
@@ -2163,8 +2203,8 @@ function fire() {
     bullets.push({
       x: useOrbit ? player.x + Math.cos(orbitA) * orbitR : player.x,
       y: useOrbit ? player.y + Math.sin(orbitA) * orbitR : player.y - 12,
-      vx: useOrbit ? 0 : Math.cos(a) * player.bulletSpeed,
-      vy: useOrbit ? 0 : Math.sin(a) * player.bulletSpeed,
+      vx: useOrbit ? 0 : Math.cos(a) * player.bulletSpeed + (game.inertiaBullet ? player.vx : 0),
+      vy: useOrbit ? 0 : Math.sin(a) * player.bulletSpeed + (game.inertiaBullet ? player.vy : 0),
       r: 6.4 * player.bulletSize,
       dmg, crit: isCrit, critCount,
       from: 'player', source: 'bullet',
@@ -2245,11 +2285,12 @@ function computeLaserPath() {
   if (player.gravityMastery) {
     return buildRingPath(player.x, player.y, GRAVITY_RING_RADIUS, 72);
   }
+  const aimOffset = inertiaFireRot();
   const sx = player.x, sy = player.y - 12;
   const path = [{ x: sx, y: sy }];
   const bounceState = { enabled: !!player.lockSpace, used: false };
   if (player.homing > 0 && !player.gravityMastery) {
-    let x = sx, y = sy, dir = -Math.PI / 2;
+    let x = sx, y = sy, dir = -Math.PI / 2 + aimOffset;
     let total = 0;
     const turn = LASER_SEG_LEN / LASER_TURN_RADIUS;
     const halfWidth = 6.4 * player.bulletSize;
@@ -2296,7 +2337,7 @@ function computeLaserPath() {
       }
     }
   } else {
-    let x = sx, y = sy, dir = -Math.PI / 2, total = 0;
+    let x = sx, y = sy, dir = -Math.PI / 2 + aimOffset, total = 0;
     while (total < LASER_MAX_LEN && x > -60 && x < W + 60 && y > -60 && y < H + 60) {
       const stepped = traceLaserStep(x, y, dir, LASER_SEG_LEN, bounceState);
       x = stepped.x;
@@ -3267,6 +3308,12 @@ const SHOP_UNIQUE = [
     good:['闪避触发时立即取消盾恢复延迟', '并暂停所有敌人 / 敌方子弹 0.5 秒'], bad:[],
     can: p => !p.timeRift,
     apply: p => { p.timeRift = true; } },
+  /*
+  { id:'curvatureengine', n:'曲率引擎', ico:'🌀', cost:180, unique:true,
+    good:['飞机不再受移速限制（移速 = ∞）'], bad:['子弹具有惯性'],
+    can: p => !p.curvatureEngine,
+    apply: p => { p.curvatureEngine = true; game.inertiaBullet = true; recompute(); } },
+  */
   { id:'lockspace', n:'闭锁空间', ico:'⬒', cost:140, unique:true,
     good:['主要攻击首次触边时反弹一次', '穿透弹反弹后可再次命中过往目标'], bad:[],
     can: p => !p.lockSpace,
@@ -3665,6 +3712,10 @@ function retryWave() {
   shockwaves.length = 0;
   // 玩家位置 / 临时状态重置
   player.x = W / 2; player.y = H - 100;
+  player.vx = 0; player.vy = 0;
+  player.inertiaVx = 0; player.inertiaVy = 0;
+  player.aimOmega = 0;
+  player.aimRot = 0; player.tailRot = 0;
   player.invuln = 1.0;
   player.shieldDelay = 0;
   player.shieldRegenT = 0;
@@ -3974,10 +4025,22 @@ function update(dt) {
     game.snapshotted = true;
   }
 
+  const px0 = player.x, py0 = player.y;
   // 玩家移动: 朝 pointer 目标点以 moveSpeed 匀速逼近, 距离不足则吸附
   if (pointer.down) {
-    const tx = clamp(pointer.x, player.r, W - player.r);
-    const ty = clamp(pointer.y, player.r, H - player.r);
+    let tx = pointer.x, ty = pointer.y;
+    if (game.inertiaBody) {
+      const sc = player.r / 13;
+      const tipD = 16 * sc;
+      const rot = inertiaFireRot();
+      const offX = Math.sin(rot) * tipD;
+      const offY = -Math.cos(rot) * tipD;
+      // 惯性模式下: 指针控制的是机头顶点位置
+      tx -= offX;
+      ty -= offY;
+    }
+    tx = clamp(tx, player.r, W - player.r);
+    ty = clamp(ty, player.r, H - player.r);
     const dx = tx - player.x, dy = ty - player.y;
     const d = Math.hypot(dx, dy);
     if (d > 0.5) {
@@ -3994,6 +4057,43 @@ function update(dt) {
     player.knockT -= dt;
     player.x = clamp(player.x, player.r, W - player.r);
     player.y = clamp(player.y, player.r, H - player.r);
+  }
+  if (dt > 0) {
+    player.vx = (player.x - px0) / dt;
+    player.vy = (player.y - py0) / dt;
+  }
+  const bodySwing = game.inertiaBody;
+  if (bodySwing) {
+    // 角动力学: 重力回复 + 阻尼 + 侧向惯性驱动力矩(只由速度与惯性决定)
+    const vk = clamp(dt * 10, 0, 1);
+    player.inertiaVx += (player.vx - player.inertiaVx) * vk;
+    player.inertiaVy += (player.vy - player.inertiaVy) * vk;
+    const ivx = player.inertiaVx, ivy = player.inertiaVy;
+    const isp = Math.hypot(ivx, ivy);
+    // 以机体朝向为坐标系, 取惯性速度在“机体右侧方向”的分量作为驱动力矩源
+    const rightX = Math.cos(player.aimRot), rightY = Math.sin(player.aimRot);
+    const sideVel = ivx * rightX + ivy * rightY;
+    const speedGain = clamp(isp / 380, 0, 2.0);
+    // 力矩组成:
+    // 1) gravity: 低速/静止时把机体拉回竖直向上 (theta=0)
+    // 2) damping: 抑制高频抖动
+    // 3) drive: 由真实惯性侧向速度驱动, 不依赖指针/目标距离
+    const gravityK = 18.0;
+    const dampingK = 1.8;
+    const driveK = 0.028;
+    const gravityTorque = -gravityK * Math.sin(player.aimRot);
+    const dampingTorque = -dampingK * player.aimOmega;
+    const driveTorque = driveK * sideVel * (0.45 + 0.55 * speedGain);
+    const angAcc = gravityTorque + dampingTorque + driveTorque;
+    player.aimOmega += angAcc * dt;
+    player.aimRot += player.aimOmega * dt;
+    player.tailRot = 0;
+  } else {
+    player.inertiaVx = 0;
+    player.inertiaVy = 0;
+    player.aimOmega = 0;
+    player.aimRot = 0;
+    player.tailRot = 0;
   }
 
   // 自动射击 (仅 playing 状态; 收集阶段不再开火)
@@ -4446,6 +4546,13 @@ function drawPlayer() {
   // 飞机本体按 player.r 缩放 (基础 r=13). 巨人 / 暴食时 r 翻倍, 视觉同步放大
   ctx.save();
   const sc = player.r / 13;
+  if (game.inertiaBody) {
+    // 围绕机头顶点旋转, 机体保持刚体不形变
+    const tipD = 16 * sc;
+    ctx.translate(0, -tipD);
+    ctx.rotate(inertiaFireRot());
+    ctx.translate(0, tipD);
+  }
   ctx.scale(sc, sc);
   // 引擎尾焰
   const flame = Math.random() * 5 + 7;
@@ -4991,7 +5098,7 @@ function updateUI() {
   lines.push(`攻击 ${player.atk.toFixed(1)}`);
   lines.push(`射速 ${player.fireRate.toFixed(2)}/s`);
   lines.push(`弹速 ${Math.round(player.bulletSpeed)}`);
-  lines.push(`移速 ${Math.round(player.moveSpeed)}`);
+  lines.push(`移速 ${Number.isFinite(player.moveSpeed) ? Math.round(player.moveSpeed) : '∞'}`);
   lines.push(`暴击 ${(player.critRate*100).toFixed(0)}%`);
   lines.push(`暴伤 ×${player.critDmg.toFixed(2)}`);
   if (player.projectiles > 1) lines.push(`<span class="extra">弹道 ${player.projectiles}</span>`);
