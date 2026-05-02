@@ -769,6 +769,10 @@ const player = {
   missileLauncher: false, missileT: 0,
   // 时空断裂: 闪避时取消盾延迟 + 暂停敌方 0.5 秒
   timeRift: false,
+  // 引力掌握: 主攻击改为环绕自身, 覆盖追踪
+  gravityMastery: false,
+  // 闭锁空间: 主要攻击可在首次触边时反弹一次
+  lockSpace: false,
   // 幸运金币: 暴击杀死敌人时, 该敌人掉落的金币自动拾取
   luckyCoins: false,
   // 全视之眼: 所有三选一改为四选一 (升级 / 商店 / 神器槽位 / boss 后神器)
@@ -792,6 +796,7 @@ function recompute() {
   player.atk = (base.atk + bonus.atk) * Math.max(0, 1 + shopAdd.atkPct) * shopMul.atk * (player.cyclopsAtkMul || 1);
   player.fireRate = Math.min(20, (base.fireRate + bonus.fireRate) * Math.max(0.1, 1 + shopAdd.fireRatePct) * shopMul.fireRate);
   player.bulletSpeed = (base.bulletSpeed + bonus.bulletSpeed) * Math.max(0.2, 1 + shopAdd.bulletSpeedPct) * shopMul.bulletSpeed;
+  if (player.gravityMastery) player.bulletSpeed *= 0.5;
   player.moveSpeed = (base.moveSpeed + bonus.moveSpeed) * Math.max(0.2, 1 + shopAdd.moveSpeedPct) * shopMul.moveSpeed;
   player.bulletSize = Math.max(0.1, (base.bulletSize + bonus.bulletSize) * Math.max(0.1, 1 + shopAdd.bulletSizePct) * shopMul.bulletSize);
   player.spread = Math.max(0.02, base.spread * shopMul.spread);
@@ -808,6 +813,7 @@ function recompute() {
   if (game.activeCurses.has('gluttony')) r *= 1.5;
   player.r = Math.round(r);
   player.magnetRange = (player.baseMagnetRange || 90) * (game.activeCurses.has('greed') ? 2 : 1);
+  if (player.gravityMastery) player.magnetRange *= 1.5;
   if (player.hp > player.maxHp) player.hp = player.maxHp;
   // shield 钳制到 [0, maxShield], 当 maxShield 为负时直接归 0
   player.shield = Math.max(0, Math.min(player.shield, player.maxShield));
@@ -1155,6 +1161,8 @@ function rollInitialStats() {
   player.absoluteField = false; player.fieldTickT = 0;
   player.missileLauncher = false; player.missileT = 0;
   player.timeRift = false;
+  player.gravityMastery = false;
+  player.lockSpace = false;
   player.luckyCoins = false;
   player.allSeeingEye = false;
   player.bannedCurses = new Set();
@@ -1303,7 +1311,16 @@ function getMaybeCurseCard() {
   if (game.easyMode) return null;
   if (game.round < 6 && !player.devilPower) return null;
   const first = drawCurse();
-  if (!first) return null;  // 全部被除厄禁掉
+  if (!first) {
+    // 需要诅咒但已全部被除厄时, 在同位置保留提示
+    return {
+      ids: [],
+      html: `
+      <div class="curse-section">
+        <div class="curse-label">你已洁净</div>
+      </div>`,
+    };
+  }
   const ids = [first];
   if (player.devilPower) {
     const second = drawCurse(first);
@@ -1359,6 +1376,11 @@ function normalizeEasyModeAfterPurchase(prev) {
     player.hp = Math.max(player.hp, prev.hp);
     player.shield = Math.max(player.shield, prev.shield);
   }
+}
+
+// 暴击率成长: 全局无上限
+function addCritRate(cur, delta) {
+  return cur + delta;
 }
 
 // 激活诅咒 (一张或多张, 覆盖上波). 所有效果在 recompute / 事件点实时读取 game.activeCurses
@@ -1448,7 +1470,7 @@ function openBossEncounterIntro(kind) {
     }
   }
   document.getElementById('introOk').onclick = () => {
-    if (curse) setActiveCurses(curse.ids);
+    if (curse && curse.ids && curse.ids.length) setActiveCurses(curse.ids);
     overlay.className = 'overlay';
     overlay.innerHTML = '';
     game.state = 'playing';
@@ -1517,6 +1539,8 @@ function generateWave(round, wave) {
 function spawnEnemy(s) {
   if (s.type === 'boss') return spawnBoss(s.scale);
   const sc = s.scale;
+  // 第 6 轮起: 远程敌人取消首发延迟, 到位后可立即开火
+  const instantRangedFirstShot = game.round > 5;
   const e = { x: rand(40, W-40), y: -30, t: 0, type: s.type, scale: sc, dead: false, killed: false };
   if (s.type === 'rusher') {
     e.r = 14; e.maxHp = 18*sc; e.vy = rand(140, 200);
@@ -1530,11 +1554,13 @@ function spawnEnemy(s) {
     e.coin = 2; e.color = '#e3a44a';
   } else if (s.type === 'shooter') {
     e.r = 16; e.maxHp = 38*sc; e.vy = rand(70, 100);
-    e.targetY = rand(80, 200); e.fireT = rand(1, 2);
+    e.targetY = rand(80, 200); e.fireT = instantRangedFirstShot ? 0 : rand(1, 2);
+    e.instantFire = instantRangedFirstShot;
     e.coin = 3; e.color = '#a44ae3';
   } else if (s.type === 'elite') {
     e.r = 22; e.maxHp = 90*sc; e.vy = rand(60, 90);
-    e.targetY = rand(100, 180); e.fireT = rand(1.5, 2.5);
+    e.targetY = rand(100, 180); e.fireT = instantRangedFirstShot ? 0 : rand(1.5, 2.5);
+    e.instantFire = instantRangedFirstShot;
     e.coin = 6; e.color = '#4ae3a4';
   } else if (s.type === 'bomber') {
     // 自爆体: 飞至玩家上方停顿后引爆
@@ -1552,7 +1578,8 @@ function spawnEnemy(s) {
   } else if (s.type === 'gunship') {
     // 重炮舰: 慢速大血量, 持续散弹
     e.r = 26; e.maxHp = 140*sc; e.vy = rand(40, 70);
-    e.targetY = rand(80, 150); e.fireT = rand(0.8, 1.2);
+    e.targetY = rand(80, 150); e.fireT = instantRangedFirstShot ? 0 : rand(0.8, 1.2);
+    e.instantFire = instantRangedFirstShot;
     e.coin = 10; e.color = '#ff8844';
   } else if (s.type === 'interceptor') {
     // 拦截机: 从左右屏幕中段出现, 警示后锁定玩家位置直线高速冲撞
@@ -1775,24 +1802,28 @@ function updateEnemy(e, dt) {
     e.x = e.bx + Math.sin(e.t * e.freq) * e.amp;
   } else if (e.type === 'shooter') {
     if (e.y < e.targetY) e.y += e.vy * dt;
-    else {
+    if (e.instantFire || e.y >= e.targetY) {
       e.fireT -= dt;
       if (e.fireT <= 0) {
         e.fireT = rand(1.4, 2.2);
         const a = Math.atan2(player.y - e.y, player.x - e.x);
         spawnEnemyBullet(e.x, e.y, a, 240, 8);
       }
+    }
+    if (e.y >= e.targetY) {
       e.x += Math.sin(e.t * 1.2) * 90 * dt;
     }
   } else if (e.type === 'elite') {
     if (e.y < e.targetY) e.y += e.vy * dt;
-    else {
+    if (e.instantFire || e.y >= e.targetY) {
       e.fireT -= dt;
       if (e.fireT <= 0) {
         e.fireT = rand(1.8, 2.6);
         const a = Math.atan2(player.y - e.y, player.x - e.x);
         for (let i = -1; i <= 1; i++) spawnEnemyBullet(e.x, e.y, a + i*0.22, 220, 1);
       }
+    }
+    if (e.y >= e.targetY) {
       e.x += Math.cos(e.t * 0.8) * 110 * dt;
     }
   } else if (e.type === 'bomber') {
@@ -1817,13 +1848,15 @@ function updateEnemy(e, dt) {
     e.x = e.bx + Math.sin(e.t * e.freq) * e.amp;
   } else if (e.type === 'gunship') {
     if (e.y < e.targetY) e.y += e.vy * dt;
-    else {
+    if (e.instantFire || e.y >= e.targetY) {
       e.fireT -= dt;
       if (e.fireT <= 0) {
         e.fireT = rand(2.0, 2.8);
         const a = Math.atan2(player.y - e.y, player.x - e.x);
         for (let i = -2; i <= 2; i++) spawnEnemyBullet(e.x, e.y, a + i*0.15, 200, 1);
       }
+    }
+    if (e.y >= e.targetY) {
       e.x += Math.cos(e.t * 0.6) * 70 * dt;
     }
   } else if (e.type === 'interceptor') {
@@ -2109,6 +2142,7 @@ function fire() {
   const n = player.projectiles;
   // player.spread = 基础相邻弹道夹角. 每多一弹道总扩散 +spread (受集中射击影响)
   const totalSpread = Math.max(0, n - 1) * player.spread;
+  const orbitR = 90; // 与初始拾取金币半径一致
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : (i / (n - 1) - 0.5);
     const a = -Math.PI/2 + t * totalSpread;
@@ -2123,35 +2157,98 @@ function fire() {
     }
     const isCrit = critCount > 0;
     const dmg = player.atk * Math.pow(player.critDmg, critCount);
+    const useOrbit = !!player.gravityMastery;
+    const orbitA = (TAU * i) / Math.max(1, n);
+    const orbitW = player.bulletSpeed / orbitR; // 线速度 v = w * r
     bullets.push({
-      x: player.x, y: player.y - 12,
-      vx: Math.cos(a) * player.bulletSpeed,
-      vy: Math.sin(a) * player.bulletSpeed,
+      x: useOrbit ? player.x + Math.cos(orbitA) * orbitR : player.x,
+      y: useOrbit ? player.y + Math.sin(orbitA) * orbitR : player.y - 12,
+      vx: useOrbit ? 0 : Math.cos(a) * player.bulletSpeed,
+      vy: useOrbit ? 0 : Math.sin(a) * player.bulletSpeed,
       r: 6.4 * player.bulletSize,
       dmg, crit: isCrit, critCount,
       from: 'player', source: 'bullet',
       pierce: player.pierce, hit: null,
-      homing: player.homing, target: null, retargetT: 0,
+      orbit: useOrbit,
+      orbitR,
+      orbitA,
+      orbitW,
+      age: 0,
+      maxLife: useOrbit ? 3 : null,
+      ricochetLeft: player.lockSpace ? 1 : 0,
+      homing: useOrbit ? 0 : player.homing, target: null, retargetT: 0,
     });
   }
 }
 
 // ============== 独眼激光 ==============
 // 周期 LASER_CYCLE 秒 = 蓄力时间 + 发射时间.
-// 发射期内伤害节拍恒定 LASER_TICK_RATE Hz; 发射时长 = LASER_CYCLE × min(fireRate / LASER_TICK_RATE, 1)
-// 平均命中频率 ≈ fireRate (上限 LASER_TICK_RATE)
+// 发射期内伤害节拍恒定 LASER_TICK_RATE Hz; 发射时长 = LASER_CYCLE × min(fireRate / LASER_FULL_FIRE_RATE, 1)
+// 20 攻速达到满额发射 (整周期都在发射); 平均命中频率 = LASER_TICK_RATE × min(fireRate / LASER_FULL_FIRE_RATE, 1)
+const LASER_FULL_FIRE_RATE = 20;
 const LASER_TICK_RATE = 20;
 const LASER_TICK = 1 / LASER_TICK_RATE;
-const LASER_CYCLE = 2.0;
+const LASER_CYCLE = 3.0;
 const LASER_SEG_LEN = 14;        // 弯曲激光分段长度 (px)
 const LASER_TURN_RADIUS = 50;    // 弯曲激光固定转弯半径 (px). 越大跟踪越温和
 const LASER_MAX_LEN = 1200;      // 路径最大长度
 const LASER_HIT_MUL = 2.1;       // 伤害判定半径相对于核心半宽 (= 外光晕视觉边缘)
+const GRAVITY_RING_RADIUS = 90;  // 与初始拾取金币半径一致
+
+function buildRingPath(cx, cy, r, seg = 72) {
+  const path = [];
+  for (let i = 0; i <= seg; i++) {
+    const a = (i / seg) * TAU;
+    path.push({ x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r });
+  }
+  return path;
+}
+
+function traceLaserStep(x, y, dir, step, bounceState) {
+  let nx = x + Math.cos(dir) * step;
+  let ny = y + Math.sin(dir) * step;
+  if (!bounceState.enabled || bounceState.used) return { x: nx, y: ny, dir };
+  if (nx >= 0 && nx <= W && ny >= 0 && ny <= H) return { x: nx, y: ny, dir };
+  const dx = nx - x, dy = ny - y;
+  let bestT = 2;
+  let wall = null;
+  if (dx < 0) {
+    const t = (0 - x) / dx;
+    if (t >= 0 && t <= 1 && t < bestT) { bestT = t; wall = 'left'; }
+  } else if (dx > 0) {
+    const t = (W - x) / dx;
+    if (t >= 0 && t <= 1 && t < bestT) { bestT = t; wall = 'right'; }
+  }
+  if (dy < 0) {
+    const t = (0 - y) / dy;
+    if (t >= 0 && t <= 1 && t < bestT) { bestT = t; wall = 'top'; }
+  } else if (dy > 0) {
+    const t = (H - y) / dy;
+    if (t >= 0 && t <= 1 && t < bestT) { bestT = t; wall = 'bottom'; }
+  }
+  if (!wall || bestT > 1) return { x: nx, y: ny, dir };
+  const hx = x + dx * bestT;
+  const hy = y + dy * bestT;
+  let ndir = dir;
+  if (wall === 'left' || wall === 'right') ndir = Math.PI - ndir;
+  else ndir = -ndir;
+  bounceState.used = true;
+  const remain = step * (1 - bestT);
+  nx = hx + Math.cos(ndir) * remain;
+  ny = hy + Math.sin(ndir) * remain;
+  nx = clamp(nx, 0, W);
+  ny = clamp(ny, 0, H);
+  return { x: nx, y: ny, dir: ndir };
+}
 
 function computeLaserPath() {
+  if (player.gravityMastery) {
+    return buildRingPath(player.x, player.y, GRAVITY_RING_RADIUS, 72);
+  }
   const sx = player.x, sy = player.y - 12;
   const path = [{ x: sx, y: sy }];
-  if (player.homing > 0) {
+  const bounceState = { enabled: !!player.lockSpace, used: false };
+  if (player.homing > 0 && !player.gravityMastery) {
     let x = sx, y = sy, dir = -Math.PI / 2;
     let total = 0;
     const turn = LASER_SEG_LEN / LASER_TURN_RADIUS;
@@ -2186,8 +2283,10 @@ function computeLaserPath() {
         dir += diff;
       }
       const px = x, py = y;
-      x += Math.cos(dir) * LASER_SEG_LEN;
-      y += Math.sin(dir) * LASER_SEG_LEN;
+      const stepped = traceLaserStep(x, y, dir, LASER_SEG_LEN, bounceState);
+      x = stepped.x;
+      y = stepped.y;
+      dir = stepped.dir;
       path.push({ x, y });
       total += LASER_SEG_LEN;
       // 当前段穿过当前目标 → 标记并解锁, 之后保持当前方向直到再有敌人入扫描范围
@@ -2197,7 +2296,15 @@ function computeLaserPath() {
       }
     }
   } else {
-    path.push({ x: sx, y: -50 });
+    let x = sx, y = sy, dir = -Math.PI / 2, total = 0;
+    while (total < LASER_MAX_LEN && x > -60 && x < W + 60 && y > -60 && y < H + 60) {
+      const stepped = traceLaserStep(x, y, dir, LASER_SEG_LEN, bounceState);
+      x = stepped.x;
+      y = stepped.y;
+      dir = stepped.dir;
+      path.push({ x, y });
+      total += LASER_SEG_LEN;
+    }
   }
   return path;
 }
@@ -2217,18 +2324,11 @@ function laserPulse(path) {
     if (e.dead || e.warningT > 0) continue;
     if (e.invuln === true || e.invuln > 0) continue;
     if (!laserSegHits(e, path, halfWidth)) continue;
-    let critCount;
-    if (player.deepCrit) {
-      const full = Math.floor(player.critRate);
-      const frac = player.critRate - full;
-      critCount = full + (Math.random() < frac ? 1 : 0);
-    } else {
-      critCount = Math.random() < player.critRate ? 1 : 0;
-    }
-    const dmg = player.atk * Math.pow(player.critDmg, critCount);
+    // 超能光束负面效果: 激光无法暴击
+    const dmg = player.atk;
     const fakeB = {
       x: e.x, y: e.y - 6,
-      dmg, crit: critCount > 0, critCount,
+      dmg, crit: false, critCount: 0,
       from: 'player', source: 'laser',
     };
     hitEnemy(e, fakeB);
@@ -2253,7 +2353,7 @@ function laserParry(path) {
 }
 
 function laserPhaseTimings() {
-  const ratio = clamp(player.fireRate / LASER_TICK_RATE, 0, 1);
+  const ratio = clamp(player.fireRate / LASER_FULL_FIRE_RATE, 0, 1);
   const fireDur = LASER_CYCLE * ratio;
   const chargeDur = LASER_CYCLE - fireDur;
   return { chargeDur, fireDur };
@@ -2336,15 +2436,17 @@ function drawPlayerLaser() {
     ctx.moveTo(path[0].x, path[0].y);
     for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
     ctx.stroke();
-    // 起点蓄力球 (随进度变大变亮, 接近满时轻微脉动)
-    const pulse = progress > 0.85 ? 1 + 0.15 * Math.sin(game.time * 28) : 1;
-    const orbR = (4 + 8 * eased) * pulse;
-    ctx.fillStyle = `rgba(140, 210, 255, ${0.3 * progress + 0.1})`;
-    ctx.beginPath(); ctx.arc(path[0].x, path[0].y, orbR, 0, TAU); ctx.fill();
-    ctx.fillStyle = `rgba(200, 240, 255, ${0.55 * progress + 0.25})`;
-    ctx.beginPath(); ctx.arc(path[0].x, path[0].y, orbR * 0.55, 0, TAU); ctx.fill();
-    ctx.fillStyle = `rgba(255, 255, 255, ${0.6 * progress + 0.3})`;
-    ctx.beginPath(); ctx.arc(path[0].x, path[0].y, Math.max(0.6, orbR * 0.22), 0, TAU); ctx.fill();
+    // 引力掌握: 蓄力期不显示激光起点蓄力球
+    if (!player.gravityMastery) {
+      const pulse = progress > 0.85 ? 1 + 0.15 * Math.sin(game.time * 28) : 1;
+      const orbR = (4 + 8 * eased) * pulse;
+      ctx.fillStyle = `rgba(140, 210, 255, ${0.3 * progress + 0.1})`;
+      ctx.beginPath(); ctx.arc(path[0].x, path[0].y, orbR, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(200, 240, 255, ${0.55 * progress + 0.25})`;
+      ctx.beginPath(); ctx.arc(path[0].x, path[0].y, orbR * 0.55, 0, TAU); ctx.fill();
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.6 * progress + 0.3})`;
+      ctx.beginPath(); ctx.arc(path[0].x, path[0].y, Math.max(0.6, orbR * 0.22), 0, TAU); ctx.fill();
+    }
   }
   ctx.restore();
 }
@@ -2558,6 +2660,22 @@ function updateBullet(b, dt) {
     if (b.x < -50 || b.x > W + 50 || b.y < -50 || b.y > H + 50) b.dead = true;
     return;
   }
+  if (b.from === 'player' && b.source === 'bullet') {
+    b.age = (b.age || 0) + dt;
+    if (b.maxLife != null && b.age >= b.maxLife) {
+      b.dead = true;
+      return;
+    }
+    if (b.orbit) {
+      const turnBefore = Math.floor(b.orbitA / TAU);
+      b.orbitA += b.orbitW * dt;
+      const turnAfter = Math.floor(b.orbitA / TAU);
+      if (turnAfter > turnBefore && b.hit) b.hit.clear();
+      b.x = player.x + Math.cos(b.orbitA) * b.orbitR;
+      b.y = player.y + Math.sin(b.orbitA) * b.orbitR;
+      return;
+    }
+  }
   if (b.from === 'player' && b.homing > 0) {
     b.retargetT = (b.retargetT || 0) - dt;
     const targetInvalid = !b.target || b.target.dead || b.target.warningT > 0 ||
@@ -2602,6 +2720,27 @@ function updateBullet(b, dt) {
   }
   b.x += b.vx * dt;
   b.y += b.vy * dt;
+  // 闭锁空间: 主要攻击子弹首次触边反弹一次
+  if (b.from === 'player' && b.source === 'bullet' && (b.ricochetLeft | 0) > 0) {
+    let bounced = false;
+    if (b.x <= b.r || b.x >= W - b.r) {
+      b.vx = -b.vx;
+      b.x = clamp(b.x, b.r, W - b.r);
+      bounced = true;
+    }
+    if (b.y <= b.r || b.y >= H - b.r) {
+      b.vy = -b.vy;
+      b.y = clamp(b.y, b.r, H - b.r);
+      bounced = true;
+    }
+    if (bounced) {
+      b.ricochetLeft = 0;
+      // 反弹后允许穿透弹再次命中过往已命中的敌人
+      if (b.hit) b.hit.clear();
+      b.target = null;
+      b.retargetT = 0;
+    }
+  }
   if (b.x < -20 || b.x > W+20 || b.y < -20 || b.y > H+20) b.dead = true;
 }
 
@@ -2642,7 +2781,7 @@ function hitEnemy(e, b) {
   }
   addHitParticles(b.x, b.y);
   const cc = b.critCount || 0;
-  const dmgTxt = Math.ceil(b.dmg) + (cc >= 2 ? '!!' : cc >= 1 ? '!' : '');
+  const dmgTxt = Math.ceil(b.dmg) + (cc > 0 ? '!'.repeat(cc) : '');
   // 燃烧 (b.fire) 用橙色, 与深度暴击 (cc>=2 红色) 区分
   const dmgColor = b.fire ? '#ff7030' : (cc >= 2 ? '#ff4d5e' : cc >= 1 ? '#ffe34a' : '#fff');
   const dmgSize = cc >= 2 ? 18 : cc >= 1 ? 16 : 12;
@@ -2902,15 +3041,15 @@ function pickWord() { return player.allSeeingEye ? '四选一' : '三选一'; }
 const LEVEL_OPTIONS = [
   { n:'攻击力', icon:'⚔',
     desc: () => {
-      const cur = player.atk;
-      const nxt = (base.atk + bonus.atk + 3) * Math.max(0, 1 + shopAdd.atkPct) * shopMul.atk * (player.cyclopsAtkMul || 1);
+      const cur = base.atk + bonus.atk;
+      const nxt = cur + 3;
       return `基础攻击 +3   ${cur.toFixed(1)} → ${nxt.toFixed(1)}`;
     },
     apply: () => { bonus.atk += 3; recompute(); } },
   { n:'射速', icon:'⚡',
     desc: () => {
-      const cur = player.fireRate;
-      const nxt = (base.fireRate + bonus.fireRate + 0.5) * Math.max(0.1, 1 + shopAdd.fireRatePct) * shopMul.fireRate;
+      const cur = base.fireRate + bonus.fireRate;
+      const nxt = cur + 0.5;
       return `基础射速 +0.5   ${cur.toFixed(2)} → ${nxt.toFixed(2)}/s`;
     },
     apply: () => { bonus.fireRate += 0.5; recompute(); } },
@@ -2938,10 +3077,10 @@ const LEVEL_OPTIONS = [
   { n:'暴击率', icon:'✶',
     desc: () => {
       const cur = player.critRate;
-      const nxt = Math.min(2, cur + 0.10);
+      const nxt = addCritRate(cur, 0.10);
       return `+10%   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
-    apply: () => { player.critRate = Math.min(2, player.critRate + 0.10); } },
+    apply: () => { player.critRate = addCritRate(player.critRate, 0.10); } },
   { n:'暴击伤害', icon:'✸',
     desc: () => {
       const cur = player.critDmg;
@@ -2996,7 +3135,7 @@ const SHOP_ITEMS = [
   { n:'集中射击', ico:'│', cost:22,
     good:['扩散 ×0.70', '暴击率 +10%'], bad:[],
     can: p => p.spread > 0.04,
-    apply: p => { shopMul.spread *= 0.70; p.critRate = Math.min(2, p.critRate + 0.10); recompute(); } },
+    apply: p => { shopMul.spread *= 0.70; p.critRate = addCritRate(p.critRate, 0.10); recompute(); } },
   { n:'狂热射击', ico:'⚡', cost:28,
     good:['射速 +15%'], bad:['移速 -15%'],
     apply: p => { shopAdd.fireRatePct += 0.15; shopAdd.moveSpeedPct -= 0.15; recompute(); } },
@@ -3022,7 +3161,7 @@ const SHOP_ITEMS = [
     apply: p => { p.evade = Math.min(0.80, p.evade + 0.08); } },
   { n:'暴击核心', ico:'✸', cost:40,
     good:['暴击率 +10%', '暴击伤害 +30%'], bad:[],
-    apply: p => { p.critRate = Math.min(2, p.critRate + 0.10); p.critDmg += 0.30; } },
+    apply: p => { p.critRate = addCritRate(p.critRate, 0.10); p.critDmg += 0.30; } },
   { n:'双子弹幕', ico:'❅', cost:40,
     good:['弹道 +2'], bad:['射速 ×0.70'],
     apply: p => { grantProjectile(p, 2); shopMul.fireRate *= 0.70; recompute(); } },
@@ -3099,7 +3238,7 @@ const SHOP_UNIQUE = [
       p.hp = Math.min(p.maxHp, p.hp + 2);
     } },
   { id:'cyclops', n:'超能光束', ico:'⊙', cost:130, unique:true,
-    good:['将攻击方式转化为无限穿透的激光', '额外弹道转化为 1.4 攻击倍率 (独立)'], bad:[],
+    good:['将攻击方式转化为无限穿透的激光', '额外弹道转化为 1.4 攻击倍率 (独立)'], bad:['激光无法暴击'],
     can: p => !p.cyclops,
     apply: p => {
       const extra = Math.max(0, p.projectiles - 1);
@@ -3128,6 +3267,15 @@ const SHOP_UNIQUE = [
     good:['闪避触发时立即取消盾恢复延迟', '并暂停所有敌人 / 敌方子弹 0.5 秒'], bad:[],
     can: p => !p.timeRift,
     apply: p => { p.timeRift = true; } },
+  { id:'lockspace', n:'闭锁空间', ico:'⬒', cost:140, unique:true,
+    good:['主要攻击首次触边时反弹一次', '穿透弹反弹后可再次命中过往目标'], bad:[],
+    can: p => !p.lockSpace,
+    apply: p => { p.lockSpace = true; } },
+  { id:'gravitymastery', n:'引力掌握', ico:'◎', cost:170, unique:true,
+    good:['主要攻击改为环绕自身'],
+    bad:['弹速减半', '你的子弹至多存在 3 秒'],
+    can: p => !p.gravityMastery,
+    apply: p => { p.gravityMastery = true; recompute(); } },
   { id:'fastcharge', n:'快速充能', ico:'↯', cost:150, unique:true,
     good:['护盾恢复延迟 -50%', '充能速度 ×2'], bad:['护盾上限 -1 格'],
     apply: p => {
@@ -3165,7 +3313,7 @@ const SHOP_UNIQUE = [
     can: p => !p.devilContract,
     apply: p => { p.devilContract = true; refreshDevilContract(); } },
   { id:'devilpower', n:'诅咒之力', ico:'⛧', cost:200, unique:true, minRound:6,
-    good:['深度暴击：暴击率超过 100% 时可再次暴击（伤害 × 暴伤²）'], bad:['每波开始额外背负一个诅咒'],
+    good:['深度暴击：暴击率每超过 100%，额外暴击 1 次（每次额外暴击再乘一次暴伤）'], bad:['每波开始额外背负一个诅咒'],
     apply: p => { p.deepCrit = true; p.devilPower = true; } },
 ];
 
@@ -3213,7 +3361,7 @@ function openEnemyIntro(types) {
   });
   document.getElementById('introOk').onclick = () => {
     for (const t of types) game.introduced.add(t);
-    if (curse) setActiveCurses(curse.ids);
+    if (curse && curse.ids && curse.ids.length) setActiveCurses(curse.ids);
     overlay.className = 'overlay';
     overlay.innerHTML = '';
     game.state = 'playing';
@@ -3250,7 +3398,7 @@ function openWaveComboIntro(types) {
     drawEnemyShape(g, t, r, info.color, null);
   });
   document.getElementById('introOk').onclick = () => {
-    if (curse) setActiveCurses(curse.ids);
+    if (curse && curse.ids && curse.ids.length) setActiveCurses(curse.ids);
     overlay.className = 'overlay';
     overlay.innerHTML = '';
     game.state = 'playing';
@@ -4849,7 +4997,7 @@ function updateUI() {
   if (player.projectiles > 1) lines.push(`<span class="extra">弹道 ${player.projectiles}</span>`);
   if (player.cyclops) lines.push(`<span class="extra">穿透 ∞</span>`);
   else if (player.pierce > 0) lines.push(`<span class="extra">穿透 ${player.pierce}</span>`);
-  if (player.homing > 0) lines.push(`<span class="extra">追踪</span>`);
+  if (player.homing > 0 && !player.gravityMastery) lines.push(`<span class="extra">追踪</span>`);
   if (player.evade > 0) lines.push(`<span class="extra">闪避 ${(player.evade*100).toFixed(0)}%</span>`);
   if (player.burnStacks > 0) lines.push(`<span class="extra">燃烧 +${player.burnStacks}/命中</span>`);
   document.getElementById('stats').innerHTML = lines.map(s => `<div>${s}</div>`).join('');
@@ -4972,4 +5120,3 @@ showStartScreen();
 </script>
 </body>
 </html>
-
