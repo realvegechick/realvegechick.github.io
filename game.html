@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>几何空战 · Roguelite</title>
+<title>Shape Air Combat · Roguelite</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin:0; padding:0; width:100%; }
@@ -18,18 +18,15 @@
     overflow:hidden; user-select:none; -webkit-user-select:none;
     overscroll-behavior:none; touch-action:none;
   }
-  /* 容器按 540:780 比例锁定, 等比缩放至窗口最大可放下尺寸 */
+  /* 容器铺满屏幕, 不再锁定比例 (适配任意手机分辨率) */
   #wrap {
     position:relative;
-    width: min(100vw, calc(100dvh * 540 / 780));
-    height: min(100dvh, calc(100vw * 780 / 540));
-    max-width: 100vw;
-    max-height: 100dvh;
+    width: 100vw;
+    height: 100dvh;
   }
   canvas {
     display:block; width:100%; height:100%;
     background:linear-gradient(180deg,#04040c,#0a0a1c);
-    border:1px solid #2a2a3e;
     touch-action:none;
   }
 
@@ -547,16 +544,16 @@
 </head>
 <body>
 <div id="wrap">
-  <canvas id="game" width="540" height="780"></canvas>
+  <canvas id="game"></canvas>
   <div id="hud">
     <div>
-      <div>第 <span id="round">1</span> 轮 · 第 <span id="wave">1</span> 波</div>
-      <div>等级 <span id="level">1</span> · 经验 <span id="kill">0</span>/<span id="killNeed">5</span></div>
+      <div id="hudRoundLine"></div>
+      <div id="hudLevelLine"></div>
       <div class="bar exp"><div id="expBar"></div></div>
       <div class="owned-uniques" id="ownedUniques"></div>
     </div>
     <div class="right">
-      <div>金币 <span id="coin">0</span></div>
+      <div id="hudCoinLine"></div>
       <div class="stats-line" id="stats"></div>
     </div>
   </div>
@@ -570,9 +567,24 @@
 "use strict";
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
-const W = cvs.width, H = cvs.height;
+// 画布尺寸跟随屏幕 (CSS 像素), 内部分辨率乘以 DPR 保证清晰. resize 时同步更新.
+let W = 0, H = 0;
+function resizeCanvas() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = window.innerWidth, cssH = window.innerHeight;
+  cvs.style.width = cssW + 'px';
+  cvs.style.height = cssH + 'px';
+  cvs.width = Math.round(cssW * dpr);
+  cvs.height = Math.round(cssH * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  W = cssW;
+  H = cssH;
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', resizeCanvas);
 const overlay = document.getElementById('overlay');
-const BGM_URL = './gaming-music-8-bit-console-play-background-intro-theme-278382.mp3';
+const BGM_URL = './bgm.mp3';
 const bgm = new Audio(BGM_URL);
 bgm.preload = 'auto';
 bgm.loop = true;
@@ -767,44 +779,369 @@ const game = {
   snapshotted: false,
 };
 
+// ============== i18n ==============
+const LOCALE_KEY = 'shapeair.locale';
+let locale = (() => {
+  try {
+    const v = localStorage.getItem(LOCALE_KEY);
+    if (v === 'en' || v === 'zh') return v;
+  } catch(_) {}
+  const lang = (navigator.language || 'zh').toLowerCase();
+  return lang.startsWith('zh') ? 'zh' : 'en';
+})();
+function setLocale(loc) {
+  if (loc !== 'zh' && loc !== 'en') return;
+  if (loc === locale) return;
+  locale = loc;
+  try { localStorage.setItem(LOCALE_KEY, loc); } catch(_) {}
+  location.reload();
+}
+const I18N = {
+  zh: {
+    'title': '几何空战',
+    'mode.easy': '简单模式',
+    'mode.normal': '普通模式',
+    'mode.challenge': '挑战模式',
+    'mode.easyNote': '（简单模式下无法解锁成就）',
+    'inertiaBody': '物理模拟（飞机物理摆动并影响发射偏角）',
+    'btn.achievements': '🏆 成就',
+    'btn.history': '📜 历史记录',
+    'btn.close': '关闭',
+    'modal.achievements': '🏆 成 就',
+    'modal.achievements.unlocked': (n, total) => `${n} / ${total} 已解锁`,
+    'modal.locked': '？？？',
+    'modal.history': '📜 历 史 记 录',
+    'modal.history.hint': cap => `点击查看详情 (最多保留 ${cap} 条)`,
+    'history.empty': '暂无历史记录',
+    'history.win': '通关',
+    'history.lose': '失败',
+    'tag.easy': '简单',
+    'tag.endless': '无尽',
+    'tag.challenge': '挑战',
+    'tag.physics': '物理',
+    'history.round': r => `第 ${r} 轮`,
+    'history.level': l => `等级 ${l}`,
+    'history.coin': c => `金币 ${c}`,
+    'history.duration': '用时',
+    'detail.victory': '★ 通关',
+    'detail.crashed': '飞机坠毁',
+    'detail.wave': w => `第 ${w} 波`,
+    'btn.back': '返回列表',
+    'detail.duration': '⏱ 用时',
+    'detail.damage': '💥 伤害统计',
+    'detail.artifacts': '⚜ 神器',
+    'detail.shopItems': '🛍 普通道具',
+    'curse.cleansed': '你已洁净',
+    'curse.descend': n => `☠ 诅 咒 降 临${n > 1 ? ' (恶魔之力 ×2)' : ''} ☠`,
+    'intro.ok': '准备开始',
+    'intro.newWithCurse': '本波将出现以下敌人, 并背负诅咒',
+    'intro.newOnly': '本波将出现以下新敌人',
+    'intro.bossFinalWithCurse': '完全体 BOSS 与本波诅咒',
+    'intro.newEnemyTitle': '⚠ 新敌情报',
+    'combo.title': '⚔ 即 将 来 袭',
+    'combo.withCurse': '本波由以下敌人混合组成, 并背负诅咒',
+    'combo.plain': '本波由以下敌人混合组成',
+    'levelup.title': (cur, next) => `⚡ 等级 ${cur} → ${next}`,
+    'levelup.sub': '升级提升基础属性',
+    'shop.soldOut': '已售出',
+    'shop.emptySlot': '[ 空 槽 ]',
+    'shop.price': c => `${c} 金`,
+    'shop.priceLocked': '∞ 金',
+    'uniqueChoice.title': '★ BOSS 已被击败',
+    'uniqueChoice.sub': pw => `${pw}解锁神器`,
+    'shop.title': '🛒 商店',
+    'shop.bossSub': r => `准备进入第 ${r} 轮`,
+    'shop.normalSub': '购买道具或直接开始下一波',
+    'shop.endlessPrice': mul => `无尽价格 ×${mul}`,
+    'shop.bossWarning': '⚠ BOSS 即将来袭 ⚠',
+    'shop.coin': c => `金币：${c}`,
+    'shop.section.artifacts': '神 器',
+    'shop.section.items': '商 品',
+    'shop.repair': '战斗维修（20 金，+1 生命）',
+    'shop.refresh': cost => `刷新（${cost} 金）`,
+    'shop.nextRound': '开始下一轮',
+    'shop.nextWave': '开始下一波',
+    'victory.title.cleared': '★ 通 关 ★',
+    'victory.title.sacrifice': '杀 身 成 仁',
+    'victory.title.expert': '专 家',
+    'victory.center.cleared': '恭 喜 通 关',
+    'victory.center.sacrifice': '与 BOSS 同归于尽',
+    'victory.expertFlavor': '专家算准剑尖距离, 略微躲开攻击, 因此身体没有受伤, 只有衣服被划破而已。',
+    'victory.subtitle': '击败第 10 轮 BOSS, 完成游戏',
+    'victory.heldTo': (r, l, c) => `坚持到第 ${r} 轮 · 等级 ${l} · 金币 ${c}`,
+    'victory.home': '回到首页',
+    'victory.endless': '无尽模式',
+    'victory.endlessNote': '（仅能解锁无尽模式成就）',
+    'gameover.title': '飞机坠毁',
+    'gameover.sub': (r, w) => `坚持到第 ${r} 轮 · 第 ${w} 波`,
+    'gameover.retry': '重试本波',
+    'gameover.giveup': '放弃尝试',
+    'feedback.link': '向作者反馈',
+    'feedback.note': '拜托了，你的反馈就是我最大的动力QAQ',
+    'hud.roundWave': (r, w) => `第 ${r} 轮 · 第 ${w} 波`,
+    'hud.levelExp': (l, cur, total) => `等级 ${l} · 经验 ${cur}/${total}`,
+    'hud.coin': c => `金币 ${c}`,
+    'hud.atk': '攻击',
+    'hud.fireRate': '射速',
+    'hud.bulletSize': '弹体',
+    'hud.bulletSpeed': '弹速',
+    'hud.moveSpeed': '移速',
+    'hud.crit': '暴击',
+    'hud.critDmg': '暴伤',
+    'hud.projectiles': '弹道',
+    'hud.pierce': '穿透',
+    'hud.homing': '追踪',
+    'hud.evade': '闪避',
+    'hud.burn': n => `燃烧 +${n}/命中`,
+    'fx.immune': '免疫',
+    'fx.shieldHit': '-1 盾',
+    'fx.shieldAbsorb': n => `-${n} 盾`,
+    'fx.shieldBreak': '撞击破盾！',
+    'fx.detonate': '殉爆!',
+    'fx.contract': '契约成立!',
+    'fx.timeRift': '时空断裂',
+    'fx.void': '虚无！',
+    'fx.evade': '闪避!',
+    'fx.crit': '暴击!',
+    'pause.title': '已 暂 停',
+    'pause.hint': '点击右上角按钮恢复',
+    'boss.first.title': '⚠ BOSS 出现',
+    'boss.skill.title': '⚠ BOSS 解锁新技能',
+    'boss.phase2.title': '⚠ BOSS 觉醒',
+    'boss.phase2.sub': '更危险的形态等着你',
+    'boss.phase2.label': '二阶段',
+    'boss.phase2.desc': 'Boss 现在具备二阶段',
+    'boss.cursed.title': '⚠ BOSS 再临',
+    'boss.cursed.desc': '完全体, 二阶段已觉醒',
+    'boss.skillPool': n => `技能池 ${n} / 4`,
+    'dmg.bullet': '普通子弹',
+    'dmg.laser': '超能光束',
+    'dmg.burn': '燃烧伤害',
+    'dmg.sentinel': '镭射哨兵',
+    'dmg.guardian': '神圣守护',
+    'dmg.missile': '死神飞弹',
+    'dmg.field': '绝对领域',
+    'lang.button': 'EN',
+    'lang.tooltip': '切换语言 / Language',
+  },
+  en: {
+    'title': 'SHAPE AIR COMBAT',
+    'mode.easy': 'EASY',
+    'mode.normal': 'NORMAL',
+    'mode.challenge': 'CHALLENGE',
+    'mode.easyNote': '(Achievements disabled in Easy mode)',
+    'inertiaBody': 'Physics body (plane sways with motion, affecting aim)',
+    'btn.achievements': '🏆 Achievements',
+    'btn.history': '📜 History',
+    'btn.close': 'Close',
+    'modal.achievements': '🏆  A C H I E V E M E N T S',
+    'modal.achievements.unlocked': (n, total) => `${n} / ${total} unlocked`,
+    'modal.locked': '???',
+    'modal.history': '📜  H I S T O R Y',
+    'modal.history.hint': cap => `Click to view details (last ${cap} runs)`,
+    'history.empty': 'No history yet',
+    'history.win': 'Cleared',
+    'history.lose': 'Defeated',
+    'tag.easy': 'Easy',
+    'tag.endless': 'Endless',
+    'tag.challenge': 'Challenge',
+    'tag.physics': 'Physics',
+    'history.round': r => `Round ${r}`,
+    'history.level': l => `Lv. ${l}`,
+    'history.coin': c => `${c} coins`,
+    'history.duration': 'Time',
+    'detail.victory': '★ Cleared',
+    'detail.crashed': 'Plane Crashed',
+    'detail.wave': w => `Wave ${w}`,
+    'btn.back': 'Back',
+    'detail.duration': '⏱ Time',
+    'detail.damage': '💥 Damage Breakdown',
+    'detail.artifacts': '⚜ Artifacts',
+    'detail.shopItems': '🛍 Shop Items',
+    'curse.cleansed': 'Cleansed',
+    'curse.descend': n => `☠  C U R S E ${n > 1 ? ' (Demonic Power ×2)' : ''} ☠`,
+    'intro.ok': 'Begin',
+    'intro.newWithCurse': 'This wave introduces new enemies and carries a curse',
+    'intro.newOnly': 'New enemies appear this wave',
+    'intro.bossFinalWithCurse': 'Final boss form with this wave\'s curse',
+    'intro.newEnemyTitle': '⚠  N E W  E N E M Y',
+    'combo.title': '⚔  I N C O M I N G',
+    'combo.withCurse': 'A mixed wave under a curse',
+    'combo.plain': 'A mixed wave from familiar foes',
+    'levelup.title': (cur, next) => `⚡ Level ${cur} → ${next}`,
+    'levelup.sub': 'Level up boosts base stats',
+    'shop.soldOut': 'Sold Out',
+    'shop.emptySlot': '[ Empty ]',
+    'shop.price': c => `${c}G`,
+    'shop.priceLocked': '∞G',
+    'uniqueChoice.title': '★ BOSS DEFEATED',
+    'uniqueChoice.sub': pw => `${pw} to unlock an artifact`,
+    'shop.title': '🛒 SHOP',
+    'shop.bossSub': r => `Round ${r} approaches`,
+    'shop.normalSub': 'Buy items, or jump to the next wave',
+    'shop.endlessPrice': mul => `Endless price ×${mul}`,
+    'shop.bossWarning': '⚠ BOSS INCOMING ⚠',
+    'shop.coin': c => `Coins: ${c}`,
+    'shop.section.artifacts': 'A R T I F A C T S',
+    'shop.section.items': 'I T E M S',
+    'shop.repair': 'Field Repair (20G, +1 HP)',
+    'shop.refresh': cost => `Refresh (${cost}G)`,
+    'shop.nextRound': 'Next Round',
+    'shop.nextWave': 'Next Wave',
+    'victory.title.cleared': '★  C L E A R E D  ★',
+    'victory.title.sacrifice': 'S E L F - S A C R I F I C E',
+    'victory.title.expert': 'E X P E R T',
+    'victory.center.cleared': 'Run Complete',
+    'victory.center.sacrifice': 'Took the BOSS down with you',
+    'victory.expertFlavor': 'The Expert measures the blade-tip and steps just out of reach — flesh untouched, only the cloth torn.',
+    'victory.subtitle': 'Defeated the round-10 boss · run complete',
+    'victory.heldTo': (r, l, c) => `Reached round ${r} · Lv. ${l} · ${c} coins`,
+    'victory.home': 'Home',
+    'victory.endless': 'Endless Mode',
+    'victory.endlessNote': '(Only Endless achievements can be unlocked)',
+    'gameover.title': 'CRASHED',
+    'gameover.sub': (r, w) => `Reached round ${r} · wave ${w}`,
+    'gameover.retry': 'Retry Wave',
+    'gameover.giveup': 'Give Up',
+    'feedback.link': 'Send Feedback',
+    'feedback.note': 'Please — your feedback keeps me going.',
+    'hud.roundWave': (r, w) => `R ${r} · W ${w}`,
+    'hud.levelExp': (l, cur, total) => `Lv. ${l} · XP ${cur}/${total}`,
+    'hud.coin': c => `Coins ${c}`,
+    'hud.atk': 'ATK',
+    'hud.fireRate': 'RoF',
+    'hud.bulletSize': 'Bullet Size',
+    'hud.bulletSpeed': 'Bullet Speed',
+    'hud.moveSpeed': 'Move Speed',
+    'hud.crit': 'Crit',
+    'hud.critDmg': 'CritDmg',
+    'hud.projectiles': 'Bullets',
+    'hud.pierce': 'Pierce',
+    'hud.homing': 'Homing',
+    'hud.evade': 'Evade',
+    'hud.burn': n => `Burn +${n}/hit`,
+    'fx.immune': 'Immune',
+    'fx.shieldHit': '-1 SHD',
+    'fx.shieldAbsorb': n => `-${n} SHD`,
+    'fx.shieldBreak': 'Shield Broken!',
+    'fx.detonate': 'Detonate!',
+    'fx.contract': 'Contract!',
+    'fx.timeRift': 'Time Rift',
+    'fx.void': 'Void!',
+    'fx.evade': 'Evade!',
+    'fx.crit': 'Crit!',
+    'pause.title': 'P A U S E D',
+    'pause.hint': 'Tap the top-right button to resume',
+    'boss.first.title': '⚠  BOSS  A P P E A R S',
+    'boss.skill.title': '⚠ BOSS UNLOCKS NEW SKILL',
+    'boss.phase2.title': '⚠ BOSS AWAKENS',
+    'boss.phase2.sub': 'A more dangerous form awaits',
+    'boss.phase2.label': 'Phase 2',
+    'boss.phase2.desc': 'The boss now has a second phase',
+    'boss.cursed.title': '⚠ BOSS RETURNS',
+    'boss.cursed.desc': 'Final form, phase 2 active',
+    'boss.skillPool': n => `Skills ${n} / 4`,
+    'dmg.bullet': 'Bullets',
+    'dmg.laser': 'Super Beam',
+    'dmg.burn': 'Burn',
+    'dmg.sentinel': 'Sentinel Drone',
+    'dmg.guardian': 'Holy Guard',
+    'dmg.missile': 'Reaper Missile',
+    'dmg.field': 'Absolute Field',
+    'lang.button': '中',
+    'lang.tooltip': 'Switch language / 切换语言',
+  },
+};
+try { document.title = (locale === 'zh' ? '几何空战' : 'Shape Air Combat') + ' · Roguelite'; } catch(_) {}
+function t(key, ...args) {
+  const v = I18N[locale]?.[key];
+  if (v === undefined) {
+    const fb = I18N.zh[key];
+    if (fb === undefined) return key;
+    return typeof fb === 'function' ? fb(...args) : fb;
+  }
+  return typeof v === 'function' ? v(...args) : v;
+}
+// 数据数组的本地化字段读取: nEn / descEn / descChallengeEn 优先
+function tn(item) { return (locale === 'en' && item && item.nEn) ? item.nEn : (item ? item.n : ''); }
+function td(item) {
+  if (!item) return '';
+  if (locale === 'en' && item.descEn) return item.descEn;
+  return item.desc;
+}
+
 // ============== 成就系统 + 存档 ==============
 const STORAGE_KEY = 'game_save_v1';
 const HISTORY_CAP = 50;
 const ACHIEVEMENTS = [
-  { id:'firepower',     n:'火力全开',  desc:'攻速达到 20.0' },
-  { id:'fullSalvo',     n:'全弹发射',  desc:'攻速达到 20.0 且持有死神飞弹' },
-  { id:'destroyBeam',   n:'破坏死光',  desc:'攻速达到 20.0 且持有超能光束' },
-  { id:'mighty',        n:'势大力沉',  desc:'攻击力超过 1000' },
-  { id:'mercyKill',     n:'恩赐解脱',  desc:'触发一次三重暴击' },
-  { id:'cyclotomy',     n:'割圆术',    desc:'持有引力掌握且存在 300 颗以上子弹' },
-  { id:'onTheEdge',     n:'命悬一线',  desc:'击败最终 BOSS 时仅剩 1 生命且无护盾' },
-  { id:'glassCannon',   n:'玻璃大炮',  desc:'达成生命上限为 1 且护盾上限为 0' },
-  { id:'middleWay',     n:'中庸之道',  desc:'同时持有快速充能和高容护盾' },
-  { id:'versatile',     n:'百般武艺',  desc:'结算时伤害来源超过 5 种' },
-  { id:'pureHeart',     n:'纯净心灵',  desc:'净化所有诅咒' },
-  { id:'physicsMaster', n:'物理大师',  desc:'勾选物理模拟的情况下通关一次游戏' },
-  { id:'demonFire',     n:'恶魔之焰',  desc:'单局游戏中, 契约状态下施加 1,000,000 层燃烧' },
-  { id:'daredevil',     n:'胆大心细',  desc:'飞过 BOSS 背后' },
-  { id:'timeParadox',   n:'时间悖论',  desc:'单波次中触发 10 次时空断裂' },
-  { id:'medicCraft',    n:'妙手回春',  desc:'单局游戏中, 通过战斗维修回复超过 10 生命' },
-  { id:'bloodthirst',   n:'嗜血成性',  desc:'单局游戏中, 通过罪恶快感回复超过 10 生命' },
-  { id:'closeQuarters', n:'近身搏斗',  desc:'单局游戏中, 通过绝对领域 & 神圣守护造成超过 1,000,000 伤害' },
-  { id:'pickyEater',    n:'口味挑剔',  desc:'单局游戏中, 刷新商店超过 30 次' },
-  { id:'miser',         n:'守财奴',    desc:'贪婪诅咒波次中, 不被扣除任何金币' },
-  { id:'panic',         n:'惊魂时刻',  desc:'1 秒钟内受到 3 点以上伤害' },
-  { id:'mockingbird',   n:'拙劣模仿',  desc:'嫉妒诅咒波次中, 不被镜像击中' },
-  { id:'crushing',      n:'摧枯拉朽',  desc:'10 秒内击败最终 BOSS' },
-  { id:'flawless',      n:'毫发无损',  desc:'击败最终 BOSS 全程不失去生命值' },
-  { id:'expert',        n:'专家',      desc:'通关全程不失去生命值' },
-  { id:'ecoMode',       n:'节能模式',  desc:'弹速 & 移速均低于 100' },
-  { id:'blitz',         n:'闪电作战',  desc:'20 分钟内通关一次游戏' },
-  { id:'selfSacrifice', n:'杀身成仁',  desc:'通过殉爆伤害击败最终 BOSS' },
-  { id:'barehanded',    n:'赤手空拳',  desc:'通关时未持有任何神器' },
-  { id:'nextRound',     n:'下局再用',  desc:'通关时持有至少 1000 金币' },
-  { id:'hardcore',      n:'硬核模式',  desc:'通关全程未使用"重试本波"' },
-  { id:'peakClimber',   n:'勇攀高峰',  desc:'通关一次挑战模式' },
-  { id:'numericInflation', n:'数值膨胀', desc:'无尽模式下, 通过第 20 轮 BOSS 波次', endlessOnly: true },
-  { id:'collector',     n:'收藏家',    desc:'解锁所有其它成就' },
+  { id:'firepower',     n:'火力全开',  desc:'攻速达到 20.0',
+    nEn:'Full Firepower', descEn:'Reach 20.0 fire rate' },
+  { id:'fullSalvo',     n:'全弹发射',  desc:'攻速达到 20.0 且持有死神飞弹',
+    nEn:'Full Salvo', descEn:'Reach 20.0 fire rate while owning Reaper Missile' },
+  { id:'destroyBeam',   n:'破坏死光',  desc:'攻速达到 20.0 且持有超能光束',
+    nEn:'Annihilation Beam', descEn:'Reach 20.0 fire rate while owning Super Beam' },
+  { id:'mighty',        n:'势大力沉',  desc:'攻击力超过 1000',
+    nEn:'Heavy Hitter', descEn:'Attack exceeds 1000' },
+  { id:'mercyKill',     n:'恩赐解脱',  desc:'触发一次三重暴击',
+    nEn:'Mercy Kill', descEn:'Trigger one triple critical hit' },
+  { id:'cyclotomy',     n:'割圆术',    desc:'持有引力掌握且存在 300 颗以上子弹',
+    nEn:'Cyclotomy', descEn:'Own Gravity Mastery while 300+ bullets exist' },
+  { id:'onTheEdge',     n:'命悬一线',  desc:'击败最终 BOSS 时仅剩 1 生命且无护盾',
+    nEn:'On the Edge', descEn:'Defeat the final boss at 1 HP with no shield' },
+  { id:'glassCannon',   n:'玻璃大炮',  desc:'达成生命上限为 1 且护盾上限为 0',
+    nEn:'Glass Cannon', descEn:'Reduce max HP to 1 and max shield to 0' },
+  { id:'middleWay',     n:'中庸之道',  desc:'同时持有快速充能和高容护盾',
+    nEn:'Middle Way', descEn:'Own both Rapid Charger and High-Cap Shield' },
+  { id:'versatile',     n:'百般武艺',  desc:'结算时伤害来源超过 5 种',
+    nEn:'Versatile', descEn:'End the run with 5+ damage sources' },
+  { id:'pureHeart',     n:'纯净心灵',  desc:'净化所有诅咒',
+    nEn:'Pure Heart', descEn:'Purify every curse' },
+  { id:'physicsMaster', n:'物理大师',  desc:'勾选物理模拟的情况下通关一次游戏',
+    nEn:'Physics Master', descEn:'Clear the game with Physics body enabled' },
+  { id:'demonFire',     n:'恶魔之焰',  desc:'单局游戏中, 契约状态下施加 1,000,000 层燃烧',
+    nEn:'Demon Fire', descEn:'In one run, apply 1,000,000 burn stacks during the Contract' },
+  { id:'daredevil',     n:'胆大心细',  desc:'飞过 BOSS 背后',
+    nEn:'Daredevil', descEn:'Fly behind the boss' },
+  { id:'timeParadox',   n:'时间悖论',  desc:'单波次中触发 10 次时空断裂',
+    nEn:'Time Paradox', descEn:'Trigger Time Rift 10 times in a single wave' },
+  { id:'medicCraft',    n:'妙手回春',  desc:'单局游戏中, 通过战斗维修回复超过 10 生命',
+    nEn:'Field Medic', descEn:'In one run, heal 10+ HP via Battle Repair' },
+  { id:'bloodthirst',   n:'嗜血成性',  desc:'单局游戏中, 通过罪恶快感回复超过 10 生命',
+    nEn:'Bloodthirst', descEn:'In one run, heal 10+ HP via Sinister Pleasure' },
+  { id:'closeQuarters', n:'近身搏斗',  desc:'单局游戏中, 通过绝对领域 & 神圣守护造成超过 1,000,000 伤害',
+    nEn:'Close Quarters', descEn:'In one run, deal 1,000,000+ damage via Absolute Field & Holy Guard' },
+  { id:'pickyEater',    n:'口味挑剔',  desc:'单局游戏中, 刷新商店超过 30 次',
+    nEn:'Picky Eater', descEn:'In one run, reroll the shop 30+ times' },
+  { id:'miser',         n:'守财奴',    desc:'贪婪诅咒波次中, 不被扣除任何金币',
+    nEn:'Miser', descEn:'Lose no coin during a Greed-cursed wave' },
+  { id:'panic',         n:'惊魂时刻',  desc:'1 秒钟内受到 3 点以上伤害',
+    nEn:'Panic', descEn:'Take 3+ damage within 1 second' },
+  { id:'mockingbird',   n:'拙劣模仿',  desc:'嫉妒诅咒波次中, 不被镜像击中',
+    nEn:'Mockingbird', descEn:'Survive an Envy wave without being hit by the mirror' },
+  { id:'crushing',      n:'摧枯拉朽',  desc:'10 秒内击败最终 BOSS',
+    nEn:'Crushing Blow', descEn:'Defeat the final boss within 10 seconds' },
+  { id:'flawless',      n:'毫发无损',  desc:'击败最终 BOSS 全程不失去生命值',
+    nEn:'Flawless', descEn:'Defeat the final boss without losing HP' },
+  { id:'expert',        n:'专家',      desc:'通关全程不失去生命值',
+    nEn:'Expert', descEn:'Clear the game without losing HP' },
+  { id:'ecoMode',       n:'节能模式',  desc:'弹速 & 移速均低于 100',
+    nEn:'Eco Mode', descEn:'Bullet speed & move speed both below 100' },
+  { id:'blitz',         n:'闪电作战',  desc:'20 分钟内通关一次游戏',
+    nEn:'Blitz', descEn:'Clear the game within 20 minutes' },
+  { id:'selfSacrifice', n:'杀身成仁',  desc:'通过殉爆伤害击败最终 BOSS',
+    nEn:'Self-Sacrifice', descEn:'Defeat the final boss with chain detonation' },
+  { id:'barehanded',    n:'赤手空拳',  desc:'通关时未持有任何神器',
+    nEn:'Barehanded', descEn:'Clear without owning any artifact' },
+  { id:'nextRound',     n:'下局再用',  desc:'通关时持有至少 1000 金币',
+    nEn:'Next Round', descEn:'Clear with 1000+ coins remaining' },
+  { id:'hardcore',      n:'硬核模式',  desc:'通关全程未使用"重试本波"',
+    nEn:'Hardcore', descEn:'Clear without using "Retry Wave"' },
+  { id:'peakClimber',   n:'勇攀高峰',  desc:'通关一次挑战模式',
+    nEn:'Peak Climber', descEn:'Clear Challenge mode once' },
+  { id:'numericInflation', n:'数值膨胀', desc:'无尽模式下, 通过第 20 轮 BOSS 波次', endlessOnly: true,
+    nEn:'Numeric Inflation', descEn:'Clear round 20 boss wave in Endless mode' },
+  { id:'collector',     n:'收藏家',    desc:'解锁所有其它成就',
+    nEn:'Collector', descEn:'Unlock every other achievement' },
 ];
 
 const saveState = { unlocked: new Set(), history: [] };
@@ -851,7 +1188,7 @@ const _achToasts = [];
 function showAchievementToast(def) {
   const el = document.createElement('div');
   el.className = 'achievement-toast';
-  el.innerHTML = `<div class="ach-title">🏆 成就解锁</div><div class="ach-name">${def.n}</div><div class="ach-desc">${def.desc}</div>`;
+  el.innerHTML = `<div class="ach-title">${locale === 'en' ? '🏆 Achievement Unlocked' : '🏆 成就解锁'}</div><div class="ach-name">${tn(def)}</div><div class="ach-desc">${td(def)}</div>`;
   document.getElementById('wrap').appendChild(el);
   _achToasts.push(el);
   requestAnimationFrame(() => {
@@ -932,11 +1269,17 @@ loadSaveState();
 
 // Boss 4 个技能, 按出场顺序逐个解锁
 const BOSS_SKILLS = [
-  { name:'环形脉冲', desc:'向四周喷射 16 发圆形弹幕, 节奏缓慢' },
-  { name:'扇形追踪', desc:'5 发追玩家位置的密集弹幕' },
-  { name:'援军召唤', desc:'召唤一波分裂/钉刺/拦截机, 容量为本波 1/6 (二阶段强化为 1/4)' },
-  { name:'横扫激光', desc:'锁定向下的高伤害激光柱, BOSS 横向移动带其扫屏' },
+  { name:'环形脉冲', desc:'向四周喷射 16 发圆形弹幕, 节奏缓慢',
+    nameEn:'Ring Pulse', descEn:'Slowly fires a 16-bullet ring in all directions' },
+  { name:'扇形追踪', desc:'5 发追玩家位置的密集弹幕',
+    nameEn:'Tracking Fan', descEn:'Dense 5-bullet spread aimed at the player' },
+  { name:'援军召唤', desc:'召唤一波分裂/钉刺/拦截机, 容量为本波 1/6 (二阶段强化为 1/4)',
+    nameEn:'Reinforcements', descEn:'Summons splitters/spikers/interceptors at 1/6 of wave capacity (1/4 in phase 2)' },
+  { name:'横扫激光', desc:'锁定向下的高伤害激光柱, BOSS 横向移动带其扫屏',
+    nameEn:'Sweeping Laser', descEn:'Locked downward high-damage beam; the boss drags it across the screen' },
 ];
+function bName(s) { return (locale === 'en' && s && s.nameEn) ? s.nameEn : (s ? s.name : ''); }
+function bDesc(s) { return (locale === 'en' && s && s.descEn) ? s.descEn : (s ? s.desc : ''); }
 
 // 敌人首次出场顺序: 每个非 boss 波只引入一种新敌人, 用完后替换为诅咒卡
 const ENEMY_ORDER = ['rusher', 'shooter', 'zigzag', 'elite', 'bomber', 'splitter', 'interceptor', 'spiker', 'gunship'];
@@ -979,18 +1322,45 @@ function comboTypeCount(round) {
 // 七宗罪诅咒: 仅当局生效, 散落到各处的检查点应用
 // descChallenge: 挑战模式下使用的描述 (若未提供则与 desc 一致)
 const CURSES = [
-  { id:'sloth',    n:'懒惰', desc:'弹速 -50%；移速 -50%', descChallenge:'弹速 -60%；移速 -60%' },
-  { id:'gluttony', n:'暴食', desc:'飞机体型 ×1.5', descChallenge:'飞机体型 ×2' },
-  { id:'pride',    n:'傲慢', desc:'取消受击无敌时间', descChallenge:'取消受击无敌与所有受击效果' },
-  { id:'wrath',    n:'愤怒', desc:'受到双倍伤害' },
-  { id:'greed',    n:'贪婪', desc:'吸金范围 ×2；主动拾取改为扣金币；飞出屏幕的金币会入账',
-                              descChallenge:'吸金范围 ×2；主动拾取改为扣双倍金币；飞出屏幕的金币会入账' },
-  { id:'lust',     n:'色欲', desc:'敌弹被玩家吸引', descChallenge:'敌弹与敌人都被玩家吸引' },
-  { id:'envy',     n:'嫉妒', desc:'消灭所有敌人后, 召唤一个镜像, 继承你的主要战斗属性' },
+  { id:'sloth',    n:'懒惰', nEn:'Sloth',
+    desc:'弹速 -50%；移速 -50%',
+    descChallenge:'弹速 -60%；移速 -60%',
+    descEn:'Bullet speed -50%; Move speed -50%',
+    descChallengeEn:'Bullet speed -60%; Move speed -60%' },
+  { id:'gluttony', n:'暴食', nEn:'Gluttony',
+    desc:'飞机体型 ×1.5',
+    descChallenge:'飞机体型 ×2',
+    descEn:'Plane size ×1.5',
+    descChallengeEn:'Plane size ×2' },
+  { id:'pride',    n:'傲慢', nEn:'Pride',
+    desc:'取消受击无敌时间',
+    descChallenge:'取消受击无敌与所有受击效果',
+    descEn:'Hit invulnerability disabled',
+    descChallengeEn:'Hit invulnerability and all on-hit effects disabled' },
+  { id:'wrath',    n:'愤怒', nEn:'Wrath',
+    desc:'受到双倍伤害',
+    descEn:'Take double damage' },
+  { id:'greed',    n:'贪婪', nEn:'Greed',
+    desc:'吸金范围 ×2；主动拾取改为扣金币；飞出屏幕的金币会入账',
+    descChallenge:'吸金范围 ×2；主动拾取改为扣双倍金币；飞出屏幕的金币会入账',
+    descEn:'Magnet range ×2; touching coins deducts gold instead; coins lost off-screen are credited',
+    descChallengeEn:'Magnet range ×2; touching coins deducts double gold; coins lost off-screen are credited' },
+  { id:'lust',     n:'色欲', nEn:'Lust',
+    desc:'敌弹被玩家吸引',
+    descChallenge:'敌弹与敌人都被玩家吸引',
+    descEn:'Enemy bullets are pulled toward the player',
+    descChallengeEn:'Enemy bullets and enemies are pulled toward the player' },
+  { id:'envy',     n:'嫉妒', nEn:'Envy',
+    desc:'消灭所有敌人后, 召唤一个镜像, 继承你的主要战斗属性',
+    descEn:'After clearing all enemies, summon a mirror that inherits your core combat stats' },
 ];
 
 function curseDesc(curse) {
   if (!curse) return '';
+  if (locale === 'en') {
+    if (game.challengeMode && curse.descChallengeEn) return curse.descChallengeEn;
+    return curse.descEn || curse.desc;
+  }
   return (game.challengeMode && curse.descChallenge) ? curse.descChallenge : curse.desc;
 }
 
@@ -1505,20 +1875,20 @@ function showStartScreen() {
     <div id="startScreen">
       <div class="start-grid"></div>
       <div class="start-geo"><span></span><span></span><span></span></div>
-      <div class="start-kicker">GEOMETRIC AIR COMBAT</div>
-      <div class="start-title">几何空战</div>
+      <button id="langBtn" class="start-meta-btn" title="${t('lang.tooltip')}" style="position:absolute;top:10px;right:10px;width:52px;min-width:52px;height:38px;padding:0;font-size:14px;line-height:1;z-index:5">${t('lang.button')}</button>
+      <div class="start-title">${t('title')}</div>
       <div class="start-mode-row">
-        <button id="easyBtn" class="start-mode-btn">简单模式</button>
-        <div class="start-mode-note" style="opacity:0.55">（简单模式下无法解锁成就）</div>
-        <button id="startBtn" class="start-mode-btn">普通模式</button>
-        <button id="challengeBtn" class="start-mode-btn challenge-btn">挑战模式</button>
+        <button id="easyBtn" class="start-mode-btn">${t('mode.easy')}</button>
+        <div class="start-mode-note" style="opacity:0.55">${t('mode.easyNote')}</div>
+        <button id="startBtn" class="start-mode-btn">${t('mode.normal')}</button>
+        <button id="challengeBtn" class="start-mode-btn challenge-btn">${t('mode.challenge')}</button>
         <label class="start-mode-note" style="display:flex; align-items:center; gap:8px; justify-content:center; margin-top:6px">
           <input type="checkbox" id="inertiaBodyChk" />
-          <span>物理模拟（飞机物理摆动并影响发射偏角）</span>
+          <span>${t('inertiaBody')}</span>
         </label>
         <div style="display:flex; gap:10px; justify-content:center; margin-top:14px">
-          <button id="achievementsBtn" class="start-meta-btn">🏆 成就 ${saveState.unlocked.size}/${ACHIEVEMENTS.length}</button>
-          <button id="historyBtn" class="start-meta-btn">📜 历史记录</button>
+          <button id="achievementsBtn" class="start-meta-btn">${t('btn.achievements')} ${saveState.unlocked.size}/${ACHIEVEMENTS.length}</button>
+          <button id="historyBtn" class="start-meta-btn">${t('btn.history')}</button>
         </div>
       </div>
     </div>`;
@@ -1530,6 +1900,7 @@ function showStartScreen() {
   document.getElementById('challengeBtn').onclick = () => startGame('challenge', readInertia());
   document.getElementById('achievementsBtn').onclick = openAchievementsModal;
   document.getElementById('historyBtn').onclick = openHistoryModal;
+  document.getElementById('langBtn').onclick = () => setLocale(locale === 'zh' ? 'en' : 'zh');
 }
 
 function openAchievementsModal() {
@@ -1538,24 +1909,24 @@ function openAchievementsModal() {
     const got = saveState.unlocked.has(a.id);
     return `<div class="ach-card ${got ? 'unlocked' : 'locked'}">
       <div class="ach-icon">${got ? '🏆' : '🔒'}</div>
-      <div class="ach-name">${got ? a.n : '？？？'}</div>
-      <div class="ach-desc">${a.desc}</div>
+      <div class="ach-name">${got ? tn(a) : t('modal.locked')}</div>
+      <div class="ach-desc">${td(a)}</div>
     </div>`;
   }).join('');
   modal.innerHTML = `
-    <div class="modal-title">🏆 成 就</div>
-    <div class="modal-sub">${saveState.unlocked.size} / ${ACHIEVEMENTS.length} 已解锁</div>
+    <div class="modal-title">${t('modal.achievements')}</div>
+    <div class="modal-sub">${t('modal.achievements.unlocked', saveState.unlocked.size, ACHIEVEMENTS.length)}</div>
     <div class="achievement-grid">${cards}</div>
-    <button class="modal-close" id="achModalClose">关闭</button>`;
+    <button class="modal-close" id="achModalClose">${t('btn.close')}</button>`;
   modal.classList.add('show');
   document.getElementById('achModalClose').onclick = () => modal.classList.remove('show');
 }
 
 function buildHistoryStatsHtml(entry) {
   const dmgLabels = {
-    bullet: '普通子弹', laser: '超能光束', burn: '燃烧伤害',
-    sentinel: '镭射哨兵', guardian: '神圣守护', missile: '死神飞弹',
-    field: '绝对领域',
+    bullet: t('dmg.bullet'), laser: t('dmg.laser'), burn: t('dmg.burn'),
+    sentinel: t('dmg.sentinel'), guardian: t('dmg.guardian'), missile: t('dmg.missile'),
+    field: t('dmg.field'),
   };
   const dmgItems = Object.entries(entry.damage || {})
     .filter(([_, v]) => v > 0)
@@ -1583,10 +1954,10 @@ function buildHistoryStatsHtml(entry) {
   const pad = n => String(n).padStart(2, '0');
   const elapsedStr = hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${mm}:${pad(ss)}`;
   const blocks = [];
-  blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#cfe;font-weight:bold;margin-bottom:4px">⏱ 用时</div><div>${elapsedStr}</div></div>`);
-  if (dmgEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffaa66;font-weight:bold;margin-bottom:6px">💥 伤害统计</div><div style="display:flex;flex-direction:column;gap:7px">${dmgEntries}</div></div>`);
-  if (uniqueEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffd06a;font-weight:bold;margin-bottom:6px">⚜ 神器</div><div style="line-height:1.7">${uniqueEntries}</div></div>`);
-  if (shopEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#a4dfff;font-weight:bold;margin-bottom:4px">🛍 普通道具</div><div style="line-height:1.7">${shopEntries}</div></div>`);
+  blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#cfe;font-weight:bold;margin-bottom:4px">${t('detail.duration')}</div><div>${elapsedStr}</div></div>`);
+  if (dmgEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffaa66;font-weight:bold;margin-bottom:6px">${t('detail.damage')}</div><div style="display:flex;flex-direction:column;gap:7px">${dmgEntries}</div></div>`);
+  if (uniqueEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffd06a;font-weight:bold;margin-bottom:6px">${t('detail.artifacts')}</div><div style="line-height:1.7">${uniqueEntries}</div></div>`);
+  if (shopEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#a4dfff;font-weight:bold;margin-bottom:4px">${t('detail.shopItems')}</div><div style="line-height:1.7">${shopEntries}</div></div>`);
   return `<div style="display:flex;flex-direction:column;gap:8px;width:100%;font-size:clamp(10px,2vmin,12px);text-align:left">${blocks.join('')}</div>`;
 }
 
@@ -1595,7 +1966,7 @@ function openHistoryModal() {
   const items = saveState.history;
   const renderList = () => {
     if (!items.length) {
-      return `<div class="history-empty">暂无历史记录</div>`;
+      return `<div class="history-empty">${t('history.empty')}</div>`;
     }
     return `<div class="history-list">${items.map((it, i) => {
       const date = new Date(it.ts);
@@ -1603,24 +1974,27 @@ function openHistoryModal() {
       const sec = it.elapsed || 0;
       const mm = Math.floor(sec / 60), ss = sec % 60;
       const dur = `${mm}:${String(ss).padStart(2,'0')}`;
-      const result = it.victory ? '<span class="h-result win">通关</span>' : '<span class="h-result lose">失败</span>';
+      const result = it.victory
+        ? `<span class="h-result win">${t('history.win')}</span>`
+        : `<span class="h-result lose">${t('history.lose')}</span>`;
       const tags = [];
-      if (it.easyMode) tags.push('简单');
-      if (it.endless) tags.push('无尽');
-      if (it.inertiaBody) tags.push('物理');
+      if (it.easyMode) tags.push(t('tag.easy'));
+      if (it.challengeMode) tags.push(t('tag.challenge'));
+      if (it.endless) tags.push(t('tag.endless'));
+      if (it.inertiaBody) tags.push(t('tag.physics'));
       const tagStr = tags.length ? ' · ' + tags.join('/') : '';
       return `<div class="history-item" data-idx="${i}">
-        <div class="h-row"><span>${result} 第 ${it.round} 轮${tagStr}</span><span style="opacity:0.7">${dateStr}</span></div>
-        <div class="h-row" style="opacity:0.78; margin-top:2px"><span>等级 ${it.level} · 金币 ${it.coin}</span><span>用时 ${dur}</span></div>
+        <div class="h-row"><span>${result} ${t('history.round', it.round)}${tagStr}</span><span style="opacity:0.7">${dateStr}</span></div>
+        <div class="h-row" style="opacity:0.78; margin-top:2px"><span>${t('history.level', it.level)} · ${t('history.coin', it.coin)}</span><span>${t('history.duration')} ${dur}</span></div>
       </div>`;
     }).join('')}</div>`;
   };
   const showList = () => {
     modal.innerHTML = `
-      <div class="modal-title">📜 历 史 记 录</div>
-      <div class="modal-sub">点击查看详情 (最多保留 ${HISTORY_CAP} 条)</div>
+      <div class="modal-title">${t('modal.history')}</div>
+      <div class="modal-sub">${t('modal.history.hint', HISTORY_CAP)}</div>
       ${renderList()}
-      <button class="modal-close" id="histModalClose">关闭</button>`;
+      <button class="modal-close" id="histModalClose">${t('btn.close')}</button>`;
     document.getElementById('histModalClose').onclick = () => modal.classList.remove('show');
     for (const it of modal.querySelectorAll('.history-item')) {
       it.onclick = () => {
@@ -1635,17 +2009,18 @@ function openHistoryModal() {
     const date = new Date(e.ts);
     const dateStr = `${date.getFullYear()}/${date.getMonth()+1}/${date.getDate()} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
     const tags = [];
-    if (e.easyMode) tags.push('简单');
-    if (e.endless) tags.push('无尽');
-    if (e.inertiaBody) tags.push('物理');
+    if (e.easyMode) tags.push(t('tag.easy'));
+    if (e.challengeMode) tags.push(t('tag.challenge'));
+    if (e.endless) tags.push(t('tag.endless'));
+    if (e.inertiaBody) tags.push(t('tag.physics'));
     modal.innerHTML = `
-      <div class="modal-title" style="color:${e.victory ? '#ffd06a' : '#ff8a8a'}">${e.victory ? '★ 通关' : '飞机坠毁'}</div>
-      <div class="modal-sub">第 ${e.round} 轮 · 第 ${e.wave} 波 · 等级 ${e.level} · 金币 ${e.coin}${tags.length ? ' · ' + tags.join('/') : ''}</div>
+      <div class="modal-title" style="color:${e.victory ? '#ffd06a' : '#ff8a8a'}">${e.victory ? t('detail.victory') : t('detail.crashed')}</div>
+      <div class="modal-sub">${t('history.round', e.round)} · ${t('detail.wave', e.wave)} · ${t('history.level', e.level)} · ${t('history.coin', e.coin)}${tags.length ? ' · ' + tags.join('/') : ''}</div>
       <div class="modal-sub" style="margin-bottom:6px">${dateStr}</div>
       <div style="max-width:380px;width:100%">${buildHistoryStatsHtml(e)}</div>
       <div style="display:flex; gap:10px; margin-top:10px">
-        <button class="modal-close" id="histBackBtn">返回列表</button>
-        <button class="modal-close" id="histCloseBtn">关闭</button>
+        <button class="modal-close" id="histBackBtn">${t('btn.back')}</button>
+        <button class="modal-close" id="histCloseBtn">${t('btn.close')}</button>
       </div>`;
     document.getElementById('histBackBtn').onclick = showList;
     document.getElementById('histCloseBtn').onclick = () => modal.classList.remove('show');
@@ -1782,7 +2157,7 @@ function getMaybeCurseCard() {
       ids: [],
       html: `
       <div class="curse-section">
-        <div class="curse-label">你已洁净</div>
+        <div class="curse-label">${t('curse.cleansed')}</div>
       </div>`,
     };
   }
@@ -1798,7 +2173,7 @@ function getMaybeCurseCard() {
     return `
       <div class="card curse-card">
         <div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">☠</div>
-        <div class="nm" style="color:#ff7777">${curse.n}</div>
+        <div class="nm" style="color:#ff7777">${tn(curse)}</div>
         <div class="ds"><div class="b">${curseDesc(curse)}</div></div>
       </div>`;
   }).join('');
@@ -1815,7 +2190,7 @@ function getMaybeCurseCard() {
     ids,
     html: `
       <div class="curse-section">
-        <div class="curse-label">☠ 诅 咒 降 临${ids.length > 1 ? ' (恶魔之力 ×2)' : ''} ☠</div>
+        <div class="curse-label">${t('curse.descend', ids.length)}</div>
         <div class="cards one-row" style="--cols:${ids.length};max-width:${cardsMax}px;margin:0 auto">${curseHtmls}</div>
         <div class="curse-particles">${particles}</div>
       </div>`,
@@ -1866,57 +2241,57 @@ function openBossEncounterIntro(kind) {
   let subtitle = '';
   let needBossCanvas = false;
   if (kind === 'first') {
-    title = '⚠ BOSS 出现';
-    subtitle = '技能池 1 / 4';
+    title = t('boss.first.title');
+    subtitle = t('boss.skillPool', 1);
     needBossCanvas = true;
     const info = ENEMY_INFO.boss;
     cardsHtml += `
       <div class="card enemy-card">
         <canvas class="enemy-prev" width="72" height="72" data-type="boss"></canvas>
-        <div class="nm">${info.name}</div>
-        <div class="ds">${info.desc}</div>
+        <div class="nm">${eName(info)}</div>
+        <div class="ds">${eDesc(info)}</div>
       </div>`;
     cardsCount++;
     const skill = BOSS_SKILLS[0];
     cardsHtml += `
       <div class="card enemy-card">
         <div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">✷</div>
-        <div class="nm" style="color:#ff7777">${skill.name}</div>
-        <div class="ds">${skill.desc}</div>
+        <div class="nm" style="color:#ff7777">${bName(skill)}</div>
+        <div class="ds">${bDesc(skill)}</div>
       </div>`;
     cardsCount++;
   } else if (kind === 'skill') {
-    title = '⚠ BOSS 解锁新技能';
-    subtitle = `技能池 ${game.bossEncounter} / 4`;
+    title = t('boss.skill.title');
+    subtitle = t('boss.skillPool', game.bossEncounter);
     const skill = BOSS_SKILLS[game.bossEncounter - 1];
     if (skill) {
       cardsHtml += `
         <div class="card enemy-card">
           <div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">✷</div>
-          <div class="nm" style="color:#ff7777">${skill.name}</div>
-          <div class="ds">${skill.desc}</div>
+          <div class="nm" style="color:#ff7777">${bName(skill)}</div>
+          <div class="ds">${bDesc(skill)}</div>
         </div>`;
       cardsCount++;
     }
   } else if (kind === 'phase2') {
-    title = '⚠ BOSS 觉醒';
-    subtitle = '更危险的形态等着你';
+    title = t('boss.phase2.title');
+    subtitle = t('boss.phase2.sub');
     cardsHtml += `
       <div class="card enemy-card">
         <div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">⚛</div>
-        <div class="nm" style="color:#ff7777">二阶段</div>
-        <div class="ds">Boss 现在具备二阶段</div>
+        <div class="nm" style="color:#ff7777">${t('boss.phase2.label')}</div>
+        <div class="ds">${t('boss.phase2.desc')}</div>
       </div>`;
     cardsCount++;
   } else if (kind === 'cursed') {
-    title = '⚠ BOSS 再临';
-    subtitle = '完全体 BOSS 与本波诅咒';
+    title = t('boss.cursed.title');
+    subtitle = t('intro.bossFinalWithCurse');
     needBossCanvas = true;
     cardsHtml += `
       <div class="card enemy-card">
         <canvas class="enemy-prev" width="72" height="72" data-type="boss"></canvas>
-        <div class="nm">${ENEMY_INFO.boss.name}</div>
-        <div class="ds">完全体, 二阶段已觉醒</div>
+        <div class="nm">${eName(ENEMY_INFO.boss)}</div>
+        <div class="ds">${t('boss.cursed.desc')}</div>
       </div>`;
     cardsCount++;
   }
@@ -1927,7 +2302,7 @@ function openBossEncounterIntro(kind) {
     <div class="subtitle">${subtitle}</div>
     <div class="cards one-row" style="--cols:${Math.max(1, cardsCount)};max-width:${Math.max(180, cardsCount * 165)}px;margin:0 auto">${cardsHtml}</div>
     ${curse ? curse.html : ''}
-    <button id="introOk">准备开始</button>`;
+    <button id="introOk">${t('intro.ok')}</button>`;
   if (needBossCanvas) {
     const c = overlay.querySelector('.enemy-prev');
     if (c) {
@@ -3267,14 +3642,14 @@ function hitEnemy(e, b) {
   // boss 入场布尔 true / 镜像受击数字 / interceptor·spiker 警示期间都免疫
   if (e.invuln === true || e.invuln > 0 || e.warningT > 0) {
     addHitParticles(b.x, b.y);
-    floats.push({ x: b.x, y: b.y - 5, t: 0.4, life: 0.4, txt: '免疫', color: '#fc4', size: 11 });
+    floats.push({ x: b.x, y: b.y - 5, t: 0.4, life: 0.4, txt: t('fx.immune'), color: '#fc4', size: 11 });
     return;
   }
   // 镜像分身: 优先扣盾后扣血; 不再因受伤立刻恢复护盾
   if (e.type === 'mirror') {
     if (e.shield > 0) {
       e.shield -= 1;
-      floats.push({ x: b.x, y: b.y - 5, t: 0.5, life: 0.5, txt: '-1 盾', color: '#7df', size: 12 });
+      floats.push({ x: b.x, y: b.y - 5, t: 0.5, life: 0.5, txt: t('fx.shieldHit'), color: '#7df', size: 12 });
     } else {
       e.hp -= 1;
       floats.push({ x: b.x, y: b.y - 5, t: 0.5, life: 0.5, txt: '-1', color: '#f44', size: 13 });
@@ -3367,7 +3742,7 @@ function collideKill() {
     player.shieldRegenT = 0;
     let inv = game.activeCurses.has('pride') ? 0 : 0.8;
     game.shake = 0.45;
-    floats.push({ x: player.x, y: player.y, t: 0.75, life: 0.75, txt: '撞击破盾！', color: '#7df', size: 14 });
+    floats.push({ x: player.x, y: player.y, t: 0.75, life: 0.75, txt: t('fx.shieldBreak'), color: '#7df', size: 14 });
     // 排斥力场: 盾被击破也算受到伤害, 触发后无敌延长到 1.0
     if (player.shockwaveOnHit && !prideBlocksAll()) {
       spawnShockwave(player.x, player.y, 220);
@@ -3388,7 +3763,7 @@ function collideKill() {
       addExplosion(player.x, player.y, '#ff8050', 40);
       addExplosion(player.x, player.y, '#fff0c0', 18);
       game.shake = 0.85;
-      floats.push({ x: player.x, y: player.y - 14, t: 1.0, life: 1.0, txt: '殉爆!', color:'#ff5040', size: 18 });
+      floats.push({ x: player.x, y: player.y - 14, t: 1.0, life: 1.0, txt: t('fx.detonate'), color:'#ff5040', size: 18 });
       // 主爆炸 AoE: 与飞弹直击一致 (20%/1% maxHp). boss 在范围内并被打死 → "杀身成仁"
       const blastR = MISSILE_AOE_R;
       const blastR2 = blastR * blastR;
@@ -3570,7 +3945,7 @@ function refreshDevilContract() {
     player.devilContractActive = true;
     if (player.cyclops) player.cyclopsAtkMul *= 1.4 * 1.4;
     else player.projectiles += 2;
-    floats.push({ x: player.x, y: player.y - 30, t: 1.2, life: 1.2, txt: '契约成立!', color: '#ff3050', size: 18 });
+    floats.push({ x: player.x, y: player.y - 30, t: 1.2, life: 1.2, txt: t('fx.contract'), color: '#ff3050', size: 18 });
     player.invuln = Math.max(player.invuln, 1.0);
     game.shake = Math.max(game.shake, 0.3);
     recompute();
@@ -3604,7 +3979,7 @@ function recordDamage(amount) {
 function triggerTimeRift() {
   player.shieldDelay = 0;
   game.freezeT = Math.max(game.freezeT, 0.5);
-  floats.push({ x: player.x, y: player.y - 28, t: 0.7, life: 0.7, txt: '时空断裂', color: '#b8e0ff', size: 13 });
+  floats.push({ x: player.x, y: player.y - 28, t: 0.7, life: 0.7, txt: t('fx.timeRift'), color: '#b8e0ff', size: 13 });
   if (game.runStats) {
     game.runStats.timeRiftCountWave++;
     if (game.runStats.timeRiftCountWave >= 10) tryUnlock('timeParadox');
@@ -3623,7 +3998,7 @@ function tryVoidSave() {
   if (player.voidActiveT > 0 || player.voidCooldownT > 0) return false;
   player.voidActiveT = 5;
   player.invuln = Math.max(player.invuln, 5);
-  floats.push({ x: player.x, y: player.y - 16, t: 1.0, life: 1.0, txt: '虚无！', color: '#c8a8ff', size: 18 });
+  floats.push({ x: player.x, y: player.y - 16, t: 1.0, life: 1.0, txt: t('fx.void'), color: '#c8a8ff', size: 18 });
   game.shake = Math.max(game.shake, 0.32);
   return true;
 }
@@ -3634,7 +4009,7 @@ function damagePlayer() {
   if (player.evade > 0 && !prideBlocksAll() && Math.random() < player.evade) {
     // 闪避: 给 0.5 秒无敌 (不受傲慢影响)
     player.invuln = Math.max(player.invuln, 0.5);
-    floats.push({ x: player.x, y: player.y - 10, t: 0.7, life: 0.7, txt: '闪避!', color: '#7df', size: 15 });
+    floats.push({ x: player.x, y: player.y - 10, t: 0.7, life: 0.7, txt: t('fx.evade'), color: '#7df', size: 15 });
     // 时空断裂: 触发闪避 → 取消盾恢复延迟 + 暂停敌人 / 敌弹 0.5 秒
     if (player.timeRift) triggerTimeRift();
     return;
@@ -3646,7 +4021,7 @@ function damagePlayer() {
     const absorb = Math.min(player.shield, remaining);
     player.shield -= absorb;
     remaining -= absorb;
-    floats.push({ x: player.x, y: player.y, t: 0.55, life: 0.55, txt: '-' + absorb + ' 盾', color: '#7df', size: 13 });
+    floats.push({ x: player.x, y: player.y, t: 0.55, life: 0.55, txt: t('fx.shieldAbsorb', absorb), color: '#7df', size: 13 });
   }
   // 仍有溢出 → 即将扣生命: 先尝试虚无形态救援
   if (remaining > 0 && !tryVoidSave()) {
@@ -3673,52 +4048,60 @@ function damagePlayer() {
 // 升级选项: 以加法提升基础数值. 不再提供生命/护盾上限提升。
 // 全视之眼影响所有 N 选一 / 槽位容量
 function pickCount() { return player.allSeeingEye ? 4 : 3; }
-function pickWord() { return player.allSeeingEye ? '四选一' : '三选一'; }
+function pickWord() {
+  if (locale === 'en') return player.allSeeingEye ? 'Pick 1 of 4' : 'Pick 1 of 3';
+  return player.allSeeingEye ? '四选一' : '三选一';
+}
 
 const LEVEL_OPTIONS = [
-  { n:'攻击力', icon:'⚔',
+  { n:'攻击力', nEn:'Attack', icon:'⚔',
     desc: () => {
       const cur = base.atk + bonus.atk;
       const nxt = cur + 3;
-      return `基础攻击 +3   ${cur.toFixed(1)} → ${nxt.toFixed(1)}`;
+      const label = locale === 'en' ? `Base Attack +3` : `基础攻击 +3`;
+      return `${label}   ${cur.toFixed(1)} → ${nxt.toFixed(1)}`;
     },
     apply: () => { bonus.atk += 3; recompute(); } },
-  { n:'射速', icon:'⚡',
+  { n:'射速', nEn:'Fire Rate', icon:'⚡',
     desc: () => {
       const cur = base.fireRate + bonus.fireRate;
       const nxt = cur + 0.5;
-      return `基础射速 +0.5   ${cur.toFixed(2)} → ${nxt.toFixed(2)}/s`;
+      const label = locale === 'en' ? `Base Fire Rate +0.5` : `基础射速 +0.5`;
+      return `${label}   ${cur.toFixed(2)} → ${nxt.toFixed(2)}/s`;
     },
     apply: () => { bonus.fireRate += 0.5; recompute(); } },
-  { n:'闪避率', icon:'▣',
+  { n:'闪避率', nEn:'Evasion', icon:'▣',
     desc: () => {
       const cur = player.evade;
       const nxt = Math.min(0.80, cur + 0.06);
-      return `+6% 受击闪避概率（上限 80%）   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
+      const label = locale === 'en' ? `+6% Evade Chance (cap 80%)` : `+6% 受击闪避概率（上限 80%）`;
+      return `${label}   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
     apply: () => { player.evade = Math.min(0.80, player.evade + 0.06); } },
-  { n:'弹体大小', icon:'●',
+  { n:'弹体大小', nEn:'Bullet Size', icon:'●',
     desc: () => {
       const cur = player.bulletSize;
       const nxt = (base.bulletSize + bonus.bulletSize + 0.15) * Math.max(0.1, 1 + shopAdd.bulletSizePct) * shopMul.bulletSize;
-      return `基础弹体 +0.15   ${cur.toFixed(2)} → ${nxt.toFixed(2)}`;
+      const label = locale === 'en' ? `Base Bullet Size +0.15` : `基础弹体 +0.15`;
+      return `${label}   ${cur.toFixed(2)} → ${nxt.toFixed(2)}`;
     },
     apply: () => { bonus.bulletSize += 0.15; recompute(); } },
-  { n:'移速', icon:'✦',
+  { n:'移速', nEn:'Move Speed', icon:'✦',
     desc: () => {
       const cur = player.moveSpeed;
       const nxt = (base.moveSpeed + bonus.moveSpeed + 50) * Math.max(0.2, 1 + shopAdd.moveSpeedPct) * shopMul.moveSpeed;
-      return `基础移速 +50   ${Math.round(cur)} → ${Math.round(nxt)}`;
+      const label = locale === 'en' ? `Base Move Speed +50` : `基础移速 +50`;
+      return `${label}   ${Math.round(cur)} → ${Math.round(nxt)}`;
     },
     apply: () => { bonus.moveSpeed += 50; recompute(); } },
-  { n:'暴击率', icon:'✶',
+  { n:'暴击率', nEn:'Crit Rate', icon:'✶',
     desc: () => {
       const cur = player.critRate;
       const nxt = addCritRate(cur, 0.10);
       return `+10%   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
     apply: () => { player.critRate = addCritRate(player.critRate, 0.10); } },
-  { n:'暴击伤害', icon:'✸',
+  { n:'暴击伤害', nEn:'Crit Damage', icon:'✸',
     desc: () => {
       const cur = player.critDmg;
       const nxt = cur + 0.30;
@@ -3737,14 +4120,14 @@ function openLevelup() {
   }
   overlay.className = 'overlay show';
   overlay.innerHTML = `
-    <div class="title">⚡ 等级 ${game.level} → ${game.level + 1}</div>
-    <div class="subtitle">${pickWord()} · 升级提升基础属性</div>
+    <div class="title">${t('levelup.title', game.level, game.level + 1)}</div>
+    <div class="subtitle">${pickWord()} · ${t('levelup.sub')}</div>
     <div class="cards one-row" id="cards" style="--cols:${picks.length}"></div>`;
   const wrap = document.getElementById('cards');
   picks.forEach(p => {
     const el = document.createElement('div');
     el.className = 'card';
-    el.innerHTML = `<div class="ico">${p.icon}</div><div class="nm">${p.n}</div><div class="ds">${p.desc()}</div>`;
+    el.innerHTML = `<div class="ico">${p.icon}</div><div class="nm">${tn(p)}</div><div class="ds">${p.desc()}</div>`;
     el.onclick = () => {
       p.apply();
       game.level++;
@@ -3766,25 +4149,31 @@ function openLevelup() {
 // 商店物品: 每件携带正面 (good) 与可能的负面 (bad) 效果组合
 // 独立乘区(shopMul)每买一次都独立 ×倍率, 与 base*(1+bonus) 再次相乘
 const SHOP_ITEMS = [
-  { n:'多发子弹', ico:'❉', cost:25,
+  { n:'多发子弹', nEn:'Multishot', ico:'❉', cost:25,
     good:['弹道 +1'], bad:['攻击 ×0.80'],
+    goodEn:['Projectiles +1'], badEn:['Attack ×0.80'],
     apply: p => { grantProjectile(p, 1); shopMul.atk *= 0.80; recompute(); } },
-  { n:'集中射击', ico:'│', cost:22,
+  { n:'集中射击', nEn:'Focused Fire', ico:'│', cost:22,
     good:['扩散 ×0.70', '暴击率 +10%'], bad:[],
+    goodEn:['Spread ×0.70', 'Crit rate +10%'], badEn:[],
     can: p => p.spread > 0.04,
     apply: p => { shopMul.spread *= 0.70; p.critRate = addCritRate(p.critRate, 0.10); recompute(); } },
-  { n:'狂热射击', ico:'⚡', cost:28,
+  { n:'狂热射击', nEn:'Frenzy', ico:'⚡', cost:28,
     good:['射速 +15%'], bad:['移速 -15%'],
+    goodEn:['Fire rate +15%'], badEn:['Move speed -15%'],
     apply: p => { shopAdd.fireRatePct += 0.15; shopAdd.moveSpeedPct -= 0.15; recompute(); } },
-  { n:'重型弹头', ico:'⚔', cost:32,
+  { n:'重型弹头', nEn:'Heavy Round', ico:'⚔', cost:32,
     good:['攻击 +30%'], bad:['弹速 -20%'],
+    goodEn:['Attack +30%'], badEn:['Bullet speed -20%'],
     apply: p => { shopAdd.atkPct += 0.30; shopAdd.bulletSpeedPct -= 0.20; recompute(); } },
-  { n:'穿透弹头', ico:'⤳', cost:35,
+  { n:'穿透弹头', nEn:'Piercing Round', ico:'⤳', cost:35,
     good:['穿透 +1'], bad:['攻击 -15%'],
+    goodEn:['Pierce +1'], badEn:['Attack -15%'],
     can: p => p.pierce < 5,
     apply: p => { p.pierce++; shopAdd.atkPct -= 0.15; recompute(); } },
-  { n:'应急护盾', ico:'◇', cost:28,
+  { n:'应急护盾', nEn:'Emergency Shield', ico:'◇', cost:28,
     good:['护盾上限 +1 格'], bad:['生命上限 -1 格'],
+    goodEn:['Max shield +1'], badEn:['Max HP -1'],
     can: p => !p.bulletParry,
     buyCheck: p => (base.maxHp + bonus.maxHp) > 1,
     apply: p => {
@@ -3793,54 +4182,68 @@ const SHOP_ITEMS = [
       if (p.hp > p.maxHp) p.hp = p.maxHp;
       p.shield = Math.max(0, p.maxShield);
     } },
-  { n:'闪避装置', ico:'▣', cost:33,
+  { n:'闪避装置', nEn:'Evasion Module', ico:'▣', cost:33,
     good:['+8% 受击闪避概率（上限 80%）'], bad:[],
+    goodEn:['+8% evade chance (cap 80%)'], badEn:[],
     apply: p => { p.evade = Math.min(0.80, p.evade + 0.08); } },
-  { n:'暴击核心', ico:'✸', cost:40,
+  { n:'暴击核心', nEn:'Crit Core', ico:'✸', cost:40,
     good:['暴击率 +10%', '暴击伤害 +30%'], bad:[],
+    goodEn:['Crit rate +10%', 'Crit damage +30%'], badEn:[],
     apply: p => { p.critRate = addCritRate(p.critRate, 0.10); p.critDmg += 0.30; } },
-  { n:'双子弹幕', ico:'❅', cost:40,
+  { n:'双子弹幕', nEn:'Twin Salvo', ico:'❅', cost:40,
     good:['弹道 +2'], bad:['射速 ×0.70'],
+    goodEn:['Projectiles +2'], badEn:['Fire rate ×0.70'],
     apply: p => { grantProjectile(p, 2); shopMul.fireRate *= 0.70; recompute(); } },
-  { n:'大型弹头', ico:'●', cost:25,
+  { n:'大型弹头', nEn:'Big Round', ico:'●', cost:25,
     good:['子弹大小 +30%'], bad:['弹速 -15%'],
+    goodEn:['Bullet size +30%'], badEn:['Bullet speed -15%'],
     apply: p => { shopAdd.bulletSizePct += 0.30; shopAdd.bulletSpeedPct -= 0.15; recompute(); } },
-  { n:'机动核心', ico:'⛢', cost:26,
+  { n:'机动核心', nEn:'Mobility Core', ico:'⛢', cost:26,
     good:['移速 +25%'], bad:['子弹大小 -15%'],
+    goodEn:['Move speed +25%'], badEn:['Bullet size -15%'],
     apply: p => { shopAdd.moveSpeedPct += 0.25; shopAdd.bulletSizePct -= 0.15; recompute(); } },
-  { n:'电磁弹射', ico:'➳', cost:20,
+  { n:'电磁弹射', nEn:'EM Catapult', ico:'➳', cost:20,
     good:['弹速 +40%'], bad:[],
+    goodEn:['Bullet speed +40%'], badEn:[],
     apply: p => { shopAdd.bulletSpeedPct += 0.40; recompute(); } },
-  { n:'火焰附加', ico:'🔥', cost:25,
+  { n:'火焰附加', nEn:'Burn Coating', ico:'🔥', cost:25,
     good:['命中敌人时附加一层可无限叠加的燃烧, 伤害频率随层数提升'], bad:[],
+    goodEn:['Hits apply a stacking burn; tick rate scales with stacks'], badEn:[],
     apply: p => { p.burnStacks += 1; } },
-  { n:'除厄', ico:'🪬', cost:50,
+  { n:'除厄', nEn:'Purification', ico:'🪬', cost:50,
     good:['永久排除一种诅咒, 不再遭遇'], bad:[],
+    goodEn:['Permanently ban one curse from appearing'], badEn:[],
     can: p => p.bannedCurses && p.bannedCurses.size < CURSES.length,
     apply: p => { requestAnimationFrame(() => openCursePurifyChoice()); } },
 ];
 
 // 独特道具: 击败 Boss 后才出现, 每个仅可获得一次, 价格大幅高于普通道具
 const SHOP_UNIQUE = [
-  { id:'megawave', n:'排斥力场', ico:'◎', cost:140, unique:true,
+  { id:'megawave', n:'排斥力场', nEn:'Repulsor Field', ico:'◎', cost:140, unique:true,
     good:['每次受到伤害时触发一次冲击波'], bad:[],
+    goodEn:['Each time you take damage, trigger a shockwave'], badEn:[],
     apply: p => { p.shockwaveOnHit = true; } },
-  { id:'parry', n:'反导射弹', ico:'⚔', cost:100, unique:true,
+  { id:'parry', n:'反导射弹', nEn:'Bullet Parry', ico:'⚔', cost:100, unique:true,
     good:['玩家子弹与敌弹互相抵消'], bad:['护盾上限永久清零'],
+    goodEn:['Your bullets cancel enemy bullets on contact'], badEn:['Max shield permanently set to 0'],
     can: p => !p.bulletParry,
     apply: p => { p.bulletParry = true; p.shield = 0; recompute(); } },
-  { id:'hedonism', n:'罪恶快感', ico:'♥', cost:66, unique:true,
+  { id:'hedonism', n:'罪恶快感', nEn:'Sinister Pleasure', ico:'♥', cost:66, unique:true,
     good:['每击杀 30 个敌人，恢复 1 生命'], bad:[],
+    goodEn:['Heal 1 HP for every 30 enemies killed'], badEn:[],
     apply: p => { p.killHealEnabled = true; } },
-  { id:'guardian', n:'神圣守护', ico:'✦', cost:140, unique:true,
+  { id:'guardian', n:'神圣守护', nEn:'Holy Guard', ico:'✦', cost:140, unique:true,
     good:['召唤两颗对位旋转的守护光球, 消除接触的敌方子弹, 撞击敌人造成基于 DPS 的伤害'], bad:[],
+    goodEn:['Two orbiting orbs erase enemy bullets on contact and deal DPS-based damage on impact'], badEn:[],
     apply: p => { p.guardian = { angle: 0, hitMap: new Map() }; } },
-  { id:'sentinel', n:'镭射哨兵', ico:'⌬', cost:130, unique:true,
+  { id:'sentinel', n:'镭射哨兵', nEn:'Sentinel Drones', ico:'⌬', cost:130, unique:true,
     good:['召唤两个发射短程射线的无人机 (可暴击)'], bad:[],
+    goodEn:['Summon two drones firing short-range beams (can crit)'], badEn:[],
     can: p => !p.sentinels,
     apply: p => { p.sentinels = true; initSentinels(); } },
-  { id:'psybullet', n:'灵能导航', ico:'✺', cost:180, unique:true,
+  { id:'psybullet', n:'灵能导航', nEn:'Psybullet', ico:'✺', cost:180, unique:true,
     good:['主要攻击获得追踪效果'], bad:['生命上限 -1 格', '护盾上限 -1 格'],
+    goodEn:['Main attack gains homing'], badEn:['Max HP -1', 'Max shield -1'],
     can: p => p.homing < 2,
     buyCheck: p => (base.maxHp + bonus.maxHp) > 1,
     apply: p => {
@@ -3850,23 +4253,26 @@ const SHOP_UNIQUE = [
       if (p.hp > p.maxHp) p.hp = p.maxHp;
       if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
-  { id:'berserk', n:'暴怒形态', ico:'☢', cost:150, unique:true,
+  { id:'berserk', n:'暴怒形态', nEn:'Berserk Form', ico:'☢', cost:150, unique:true,
     good:['攻击 ×2.00 (独立)'], bad:['生命上限 -1 格'],
+    goodEn:['Attack ×2.00 (independent)'], badEn:['Max HP -1'],
     buyCheck: p => (base.maxHp + bonus.maxHp) > 1,
     apply: p => {
       bonus.maxHp -= 1; shopMul.atk *= 2.00;
       recompute();
       if (p.hp > p.maxHp) p.hp = p.maxHp;
     } },
-  { id:'thunder', n:'回响形态', ico:'⚡', cost:150, unique:true,
+  { id:'thunder', n:'回响形态', nEn:'Echo Form', ico:'⚡', cost:150, unique:true,
     good:['射速 ×2.00 (独立)'], bad:['护盾上限 -1 格'],
+    goodEn:['Fire rate ×2.00 (independent)'], badEn:['Max shield -1'],
     apply: p => {
       bonus.maxShield -= 1; shopMul.fireRate *= 2.00;
       recompute();
       if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
-  { id:'giant', n:'巨人形态', ico:'⛰', cost:80, unique:true,
+  { id:'giant', n:'巨人形态', nEn:'Giant Form', ico:'⛰', cost:80, unique:true,
     good:['生命上限 +2 格', '体型 ×1.5', '弹体大小 ×1.5'], bad:[],
+    goodEn:['Max HP +2', 'Body size ×1.5', 'Bullet size ×1.5'], badEn:[],
     apply: p => {
       p.bigForm = true;
       shopMul.bulletSize *= 1.5;
@@ -3874,34 +4280,38 @@ const SHOP_UNIQUE = [
       recompute();
       p.hp = Math.min(p.maxHp, p.hp + 2);
     } },
-  { id:'cyclops', n:'超能光束', ico:'⊙', cost:130, unique:true,
+  { id:'cyclops', n:'超能光束', nEn:'Super Beam', ico:'⊙', cost:130, unique:true,
     good:['将攻击方式转化为无限穿透的激光', '额外弹道转化为 1.4 攻击倍率 (独立)'], bad:['激光无法暴击'],
+    goodEn:['Main attack becomes a piercing laser', 'Each extra projectile converts to ×1.4 attack (independent)'],
+    badEn:['Laser cannot crit'],
     can: p => !p.cyclops,
     apply: p => {
       const extra = Math.max(0, p.projectiles - 1);
       p.cyclops = true;
       if (extra > 0) p.cyclopsAtkMul *= Math.pow(1.4, extra);
-      // 不再重置 projectiles, 嫉妒镜像可以继承玩家原本的弹道数
       p.laserPhase = 'charge'; p.laserPhaseT = 0; p.laserTickT = 0; p.laserFlashT = 0; p.laserPath = null;
       recompute();
     } },
-  { id:'void', n:'幽魂形态', ico:'○', cost:120, unique:true,
+  { id:'void', n:'幽魂形态', nEn:'Wraith Form', ico:'○', cost:120, unique:true,
     good:['受到生命值伤害时, 改为进入 5 秒无敌 (30 秒冷却)'], bad:[],
+    goodEn:['When about to take HP damage, become invulnerable for 5s (30s cooldown)'], badEn:[],
     apply: p => {
       p.voidForm = true;
       p.voidActiveT = 0;
       p.voidCooldownT = 0;
     } },
-  { id:'bigshield', n:'高容护盾', ico:'◈', cost:120, unique:true,
+  { id:'bigshield', n:'高容护盾', nEn:'High-Cap Shield', ico:'◈', cost:120, unique:true,
     good:['护盾上限 +2 格'], bad:['护盾恢复延迟 ×2'],
+    goodEn:['Max shield +2'], badEn:['Shield regen delay ×2'],
     apply: p => {
       bonus.maxShield += 2;
       p.shieldRegenDelayBase *= 2;
       recompute();
       p.shield = Math.max(0, p.maxShield);
     } },
-  { id:'timerift', n:'时空断裂', ico:'⌛', cost:130, unique:true,
+  { id:'timerift', n:'时空断裂', nEn:'Time Rift', ico:'⌛', cost:130, unique:true,
     good:['闪避触发时立即取消盾恢复延迟', '并暂停所有敌人 / 敌方子弹 0.5 秒'], bad:[],
+    goodEn:['On evade: cancel shield regen delay', 'Freeze all enemies & enemy bullets for 0.5s'], badEn:[],
     can: p => !p.timeRift,
     apply: p => { p.timeRift = true; } },
   /*
@@ -3910,17 +4320,21 @@ const SHOP_UNIQUE = [
     can: p => !p.curvatureEngine,
     apply: p => { p.curvatureEngine = true; game.inertiaBullet = true; recompute(); } },
   */
-  { id:'lockspace', n:'闭锁空间', ico:'⬒', cost:140, unique:true,
+  { id:'lockspace', n:'闭锁空间', nEn:'Lockspace', ico:'⬒', cost:140, unique:true,
     good:['主要攻击首次触边时反弹一次', '穿透弹反弹后可再次命中过往目标'], bad:[],
+    goodEn:['Main attack ricochets once off the screen edge', 'Pierce bullets can re-hit prior targets after bounce'], badEn:[],
     can: p => !p.lockSpace,
     apply: p => { p.lockSpace = true; } },
-  { id:'gravitymastery', n:'引力掌握', ico:'◎', cost:170, unique:true,
+  { id:'gravitymastery', n:'引力掌握', nEn:'Gravity Mastery', ico:'◎', cost:170, unique:true,
     good:['主要攻击改为环绕自身'],
     bad:['弹速减半', '你的子弹至多存在 3 秒'],
+    goodEn:['Main attack orbits around you'],
+    badEn:['Bullet speed halved', 'Your bullets last at most 3 seconds'],
     can: p => !p.gravityMastery,
     apply: p => { p.gravityMastery = true; recompute(); } },
-  { id:'fastcharge', n:'快速充能', ico:'↯', cost:150, unique:true,
+  { id:'fastcharge', n:'快速充能', nEn:'Rapid Charger', ico:'↯', cost:150, unique:true,
     good:['护盾恢复延迟 -50%', '充能速度 ×2'], bad:['护盾上限 -1 格'],
+    goodEn:['Shield regen delay -50%', 'Recharge rate ×2'], badEn:['Max shield -1'],
     apply: p => {
       p.shieldRegenDelayBase *= 0.5;
       p.shieldRegenInterval *= 0.5;
@@ -3928,82 +4342,105 @@ const SHOP_UNIQUE = [
       recompute();
       if (p.shield > p.maxShield) p.shield = Math.max(0, p.maxShield);
     } },
-  { id:'missile', n:'死神飞弹', ico:'☠', cost:160, unique:true,
+  { id:'missile', n:'死神飞弹', nEn:'Reaper Missile', ico:'☠', cost:160, unique:true,
     good:['每 3 秒发射两枚飞弹，间隔随攻速缩短', '命中造成最大生命伤害（小怪 20%，BOSS 1%），并造成基于攻击力的范围伤害'],
     bad:['无护盾遭到撞击将直接殉爆'],
+    goodEn:['Fire two missiles every 3s, interval shortens with fire rate', 'On hit: deal % max-HP damage (20% normal, 1% BOSS) and AoE based on attack'],
+    badEn:['Without shield, a collision triggers chain detonation'],
     can: p => !p.missileLauncher,
     apply: p => { p.missileLauncher = true; p.missileT = 0; } },
-  { id:'absfield', n:'绝对领域', ico:'⊛', cost:150, unique:true,
+  { id:'absfield', n:'绝对领域', nEn:'Absolute Field', ico:'⊛', cost:150, unique:true,
     good:['领域内敌人每 0.5 秒受到 1 次攻击伤害', '领域内所有子弹速度减半'], bad:[],
+    goodEn:['Enemies in the field take 1 attack tick every 0.5s', 'All bullets in the field move at half speed'], badEn:[],
     can: p => !p.absoluteField,
     apply: p => { p.absoluteField = true; p.fieldTickT = 0; } },
-  { id:'primalfire', n:'原初火焰', ico:'🜂', cost:150, unique:true,
+  { id:'primalfire', n:'原初火焰', nEn:'Primal Fire', ico:'🜂', cost:150, unique:true,
     good:['燃烧触发时附加最大生命伤害（小怪 5%，BOSS 0.1%）'],
     bad:['燃烧触发频率减半'],
+    goodEn:['Each burn tick adds % max-HP damage (5% normal, 0.1% BOSS)'],
+    badEn:['Burn tick rate halved'],
     can: p => !p.primalFire,
     apply: p => { p.primalFire = true; } },
-  { id:'alleye', n:'全视之眼', ico:'👁', cost:130, unique:true,
+  { id:'alleye', n:'全视之眼', nEn:'All-Seeing Eye', ico:'👁', cost:130, unique:true,
     good:['所有三选一改为四选一 (升级 / 商店 / 神器槽位)'], bad:[],
+    goodEn:['All "pick 1 of 3" become "pick 1 of 4" (level / shop / artifact slot)'], badEn:[],
     can: p => !p.allSeeingEye,
     apply: p => { p.allSeeingEye = true; } },
-  { id:'lucky', n:'幸运金币', ico:'☘', cost:77, unique:true,
+  { id:'lucky', n:'幸运金币', nEn:'Lucky Coin', ico:'☘', cost:77, unique:true,
     good:['暴击杀死敌人时, 该敌人掉落的金币自动拾取'], bad:[],
+    goodEn:['Coins from crit-killed enemies are auto-collected'], badEn:[],
     can: p => !p.luckyCoins,
     apply: p => { p.luckyCoins = true; } },
-  { id:'devilcontract', n:'恶魔契约', ico:'⛓', cost:130, unique:true,
+  { id:'devilcontract', n:'恶魔契约', nEn:'Demon Contract', ico:'⛓', cost:130, unique:true,
     good:['生命为 1 且无护盾时：攻击 +5、射速 +5、燃烧 +5、弹道 +2（最终修正）'],
     bad:['生命为 1 时：护盾恢复延迟 = ∞'],
+    goodEn:['At 1 HP & no shield: Attack +5, Fire rate +5, Burn +5, Projectiles +2 (final adjustment)'],
+    badEn:['At 1 HP: shield regen delay = ∞'],
     can: p => !p.devilContract,
     apply: p => { p.devilContract = true; refreshDevilContract(); } },
-  { id:'devilpower', n:'诅咒之力', ico:'⛧', cost:200, unique:true, minRound:6,
+  { id:'devilpower', n:'诅咒之力', nEn:'Demonic Power', ico:'⛧', cost:200, unique:true, minRound:6,
     good:['深度暴击：暴击率每超过 100%，额外暴击 1 次（每次额外暴击再乘一次暴伤）'], bad:['每波开始额外背负一个诅咒'],
+    goodEn:['Deep Crit: each 100% over crit rate adds another crit (each layer multiplies crit damage)'],
+    badEn:['Each wave begins with one extra curse'],
     apply: p => { p.deepCrit = true; p.devilPower = true; } },
 ];
 
 // ============== 敌人情报 ==============
 const ENEMY_INFO = {
-  rusher:      { name:'直冲体',  color:'#e34a4a', desc:'高速直线下冲, 锁定玩家方向' },
-  zigzag:      { name:'蛇行机',  color:'#e3a44a', desc:'左右波形摆动, 较难瞄准' },
-  shooter:     { name:'狙击机',  color:'#a44ae3', desc:'悬停后向玩家射出瞄准弹' },
-  elite:       { name:'散射机',  color:'#4ae3a4', desc:'高血厚甲, 三连扇形散射' },
-  bomber:      { name:'自爆机',  color:'#7e4ad6', desc:'飞至玩家上方停顿引爆, 释放 12 方向放射弹幕' },
-  splitter:    { name:'分裂机',  color:'#5fc4ff', desc:'死亡时碎裂为两个高速冲撞体' },
-  interceptor: { name:'拦截机',  color:'#ffaa00', desc:'从屏幕侧面出现, 锁定玩家出场位置直线高速冲撞' },
-  spiker:      { name:'钉刺机',  color:'#aaff66', desc:'从屏幕下方慢速向上飞行' },
-  gunship:     { name:'重炮舰',  color:'#ff8844', desc:'厚甲慢速, 持续输出五连扇形散射' },
-  boss:        { name:'BOSS',    color:'#ff4488', desc:'入场期间无敌，含横扫激光' },
+  rusher:      { name:'直冲体',  color:'#e34a4a', desc:'高速直线下冲, 锁定玩家方向',
+    nameEn:'Rusher', descEn:'Dives straight down, locking on to the player\'s direction' },
+  zigzag:      { name:'蛇行机',  color:'#e3a44a', desc:'左右波形摆动, 较难瞄准',
+    nameEn:'Zigzag', descEn:'Weaves side to side, hard to aim at' },
+  shooter:     { name:'狙击机',  color:'#a44ae3', desc:'悬停后向玩家射出瞄准弹',
+    nameEn:'Sniper', descEn:'Hovers, then fires aimed shots at the player' },
+  elite:       { name:'散射机',  color:'#4ae3a4', desc:'高血厚甲, 三连扇形散射',
+    nameEn:'Spreader', descEn:'High HP, fires three-shot spread bursts' },
+  bomber:      { name:'自爆机',  color:'#7e4ad6', desc:'飞至玩家上方停顿引爆, 释放 12 方向放射弹幕',
+    nameEn:'Bomber', descEn:'Hovers above the player, then detonates a 12-way bullet ring' },
+  splitter:    { name:'分裂机',  color:'#5fc4ff', desc:'死亡时碎裂为两个高速冲撞体',
+    nameEn:'Splitter', descEn:'On death, splits into two fast-moving rushers' },
+  interceptor: { name:'拦截机',  color:'#ffaa00', desc:'从屏幕侧面出现, 锁定玩家出场位置直线高速冲撞',
+    nameEn:'Interceptor', descEn:'Enters from the screen edge and dashes straight at the player\'s position' },
+  spiker:      { name:'钉刺机',  color:'#aaff66', desc:'从屏幕下方慢速向上飞行',
+    nameEn:'Spiker', descEn:'Drifts slowly upward from the bottom of the screen' },
+  gunship:     { name:'重炮舰',  color:'#ff8844', desc:'厚甲慢速, 持续输出五连扇形散射',
+    nameEn:'Gunship', descEn:'Slow and armored, fires sustained five-way spread' },
+  boss:        { name:'BOSS',    color:'#ff4488', desc:'入场期间无敌，含横扫激光',
+    nameEn:'BOSS', descEn:'Invulnerable while entering; features a sweeping laser' },
 };
+function eName(info) { return (locale === 'en' && info && info.nameEn) ? info.nameEn : (info ? info.name : ''); }
+function eDesc(info) { return (locale === 'en' && info && info.descEn) ? info.descEn : (info ? info.desc : ''); }
 
 function openEnemyIntro(types) {
   game.state = 'enemyIntro';
   overlay.className = 'overlay show';
-  let cards = types.map(t => {
-    const info = ENEMY_INFO[t];
+  let cards = types.map(et => {
+    const info = ENEMY_INFO[et];
     if (!info) return '';
     return `
       <div class="card enemy-card">
-        <canvas class="enemy-prev" width="72" height="72" data-type="${t}"></canvas>
-        <div class="nm">${info.name}</div>
-        <div class="ds">${info.desc}</div>
+        <canvas class="enemy-prev" width="72" height="72" data-type="${et}"></canvas>
+        <div class="nm">${eName(info)}</div>
+        <div class="ds">${eDesc(info)}</div>
       </div>`;
   }).join('');
   const curse = getMaybeCurseCard();
   overlay.innerHTML = `
-    <div class="title">⚠ 新敌情报</div>
-    <div class="subtitle">${curse ? '本波将出现以下敌人, 并背负诅咒' : '本波将出现以下新敌人'}</div>
+    <div class="title">${t('intro.newEnemyTitle')}</div>
+    <div class="subtitle">${curse ? t('intro.newWithCurse') : t('intro.newOnly')}</div>
     <div class="cards one-row" style="--cols:${Math.max(1, types.length)};max-width:${Math.max(180, types.length * 165)}px;margin:0 auto">${cards}</div>
     ${curse ? curse.html : ''}
-    <button id="introOk">准备开始</button>`;
+    <button id="introOk">${t('intro.ok')}</button>`;
   overlay.querySelectorAll('.enemy-prev').forEach(c => {
-    const t = c.dataset.type;
-    const info = ENEMY_INFO[t];
+    const et = c.dataset.type;
+    const info = ENEMY_INFO[et];
     const g = c.getContext('2d');
     g.translate(c.width / 2, c.height / 2);
-    const r = (t === 'boss' || t === 'gunship' || t === 'elite') ? 26 : 20;
-    drawEnemyShape(g, t, r, info.color, null);
+    const r = (et === 'boss' || et === 'gunship' || et === 'elite') ? 26 : 20;
+    drawEnemyShape(g, et, r, info.color, null);
   });
   document.getElementById('introOk').onclick = () => {
-    for (const t of types) game.introduced.add(t);
+    for (const et of types) game.introduced.add(et);
     if (curse && curse.ids && curse.ids.length) setActiveCurses(curse.ids);
     overlay.className = 'overlay';
     overlay.innerHTML = '';
@@ -4015,30 +4452,30 @@ function openEnemyIntro(types) {
 function openWaveComboIntro(types) {
   game.state = 'enemyIntro';
   overlay.className = 'overlay show';
-  let cards = types.map(t => {
-    const info = ENEMY_INFO[t];
+  let cards = types.map(et => {
+    const info = ENEMY_INFO[et];
     if (!info) return '';
     return `
       <div class="card enemy-card">
-        <canvas class="enemy-prev" width="64" height="64" data-type="${t}"></canvas>
-        <div class="nm">${info.name}</div>
-        <div class="ds">${info.desc}</div>
+        <canvas class="enemy-prev" width="64" height="64" data-type="${et}"></canvas>
+        <div class="nm">${eName(info)}</div>
+        <div class="ds">${eDesc(info)}</div>
       </div>`;
   }).join('');
   const curse = getMaybeCurseCard();
   overlay.innerHTML = `
-    <div class="title">⚔ 即 将 来 袭</div>
-    <div class="subtitle">${curse ? '本波由以下敌人混合组成, 并背负诅咒' : '本波由以下敌人混合组成'}</div>
+    <div class="title">${t('combo.title')}</div>
+    <div class="subtitle">${curse ? t('combo.withCurse') : t('combo.plain')}</div>
     <div class="cards one-row" style="--cols:${Math.max(1, types.length)};max-width:${Math.max(180, types.length * 165)}px;margin:0 auto">${cards}</div>
     ${curse ? curse.html : ''}
-    <button id="introOk">准备开始</button>`;
+    <button id="introOk">${t('intro.ok')}</button>`;
   overlay.querySelectorAll('.enemy-prev').forEach(c => {
-    const t = c.dataset.type;
-    const info = ENEMY_INFO[t];
+    const et = c.dataset.type;
+    const info = ENEMY_INFO[et];
     const g = c.getContext('2d');
     g.translate(c.width / 2, c.height / 2);
-    const r = (t === 'gunship' || t === 'elite') ? 22 : 18;
-    drawEnemyShape(g, t, r, info.color, null);
+    const r = (et === 'gunship' || et === 'elite') ? 22 : 18;
+    drawEnemyShape(g, et, r, info.color, null);
   });
   document.getElementById('introOk').onclick = () => {
     if (curse && curse.ids && curse.ids.length) setActiveCurses(curse.ids);
@@ -4061,7 +4498,7 @@ function openCursePurifyChoice() {
   remaining.forEach(c => {
     const el = document.createElement('div');
     el.className = 'card';
-    el.innerHTML = `<div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">☠</div><div class="nm" style="color:#ff9090">${c.n}</div><div class="ds"><div class="b">${curseDesc(c)}</div></div>`;
+    el.innerHTML = `<div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">☠</div><div class="nm" style="color:#ff9090">${tn(c)}</div><div class="ds"><div class="b">${curseDesc(c)}</div></div>`;
     el.onclick = () => {
       player.bannedCurses.add(c.id);
       if (player.bannedCurses.size >= CURSES.length) tryUnlock('pureHeart');
@@ -4135,19 +4572,19 @@ function renderShop() {
   const bossNext = !isBossClear && game.wave === game.wavesPerRound;
 
   overlay.innerHTML = `
-    <div class="title">${isBossClear ? '★ BOSS 已被击败' : '🛒 商店'}</div>
-    <div class="subtitle">${isBossClear ? '准备进入第 ' + game.round + ' 轮' : '购买道具或直接开始下一波'}${game.endless && priceMul > 1 ? ' · 无尽价格 ×' + priceMul.toFixed(2) : ''}</div>
-    ${bossNext ? '<div style="color:#ffd06a; font-weight:bold; text-align:center; margin: 4px 0 8px; font-size: clamp(11px, 2.4vmin, 13px); text-shadow: 0 0 8px rgba(255,200,80,0.6);">⚠ BOSS 即将来袭 ⚠</div>' : ''}
-    <div id="ovCoin">金币：${player.coin}</div>
-    <div class="section-label">神 器</div>
+    <div class="title">${isBossClear ? t('uniqueChoice.title') : t('shop.title')}</div>
+    <div class="subtitle">${isBossClear ? t('shop.bossSub', game.round) : t('shop.normalSub')}${game.endless && priceMul > 1 ? ' · ' + t('shop.endlessPrice', priceMul.toFixed(2)) : ''}</div>
+    ${bossNext ? `<div style="color:#ffd06a; font-weight:bold; text-align:center; margin: 4px 0 8px; font-size: clamp(11px, 2.4vmin, 13px); text-shadow: 0 0 8px rgba(255,200,80,0.6);">${t('shop.bossWarning')}</div>` : ''}
+    <div id="ovCoin">${t('shop.coin', player.coin)}</div>
+    <div class="section-label">${t('shop.section.artifacts')}</div>
     <div class="cards one-row" id="uniqueSlotsRow" style="--cols:${pickCount()}"></div>
-    <div class="section-label" style="color:#a4dfff">商 品</div>
+    <div class="section-label" style="color:#a4dfff">${t('shop.section.items')}</div>
     <div class="cards one-row" id="normalCards" style="--cols:${pickCount()}"></div>
     <div class="shop-actions">
-      <button id="repairBtn">战斗维修（20 金，+1 生命）</button>
-      <button id="refreshBtn">刷新（${game.shopRefreshCost} 金）</button>
+      <button id="repairBtn">${t('shop.repair')}</button>
+      <button id="refreshBtn">${t('shop.refresh', game.shopRefreshCost)}</button>
     </div>
-    <button id="ovClose">${isBossClear ? '开始下一轮' : '开始下一波'}</button>`;
+    <button id="ovClose">${isBossClear ? t('shop.nextRound') : t('shop.nextWave')}</button>`;
 
   const uw = document.getElementById('uniqueSlotsRow');
   slots.forEach((it, i) => uw.appendChild(makeUniqueSlotCard(it, i)));
@@ -4204,7 +4641,7 @@ function makeNormalCard(p, idx) {
   const el = document.createElement('div');
   if (!p) {
     el.className = 'card sold';
-    el.innerHTML = `<div class="ico">·</div><div class="nm">已售出</div><div class="ds"></div><div class="pr"></div>`;
+    el.innerHTML = `<div class="ico">·</div><div class="nm">${t('shop.soldOut')}</div><div class="ds"></div><div class="pr"></div>`;
     return el;
   }
   // 挑战模式: 除厄价格无穷大, 无法购买
@@ -4214,12 +4651,13 @@ function makeNormalCard(p, idx) {
     && player.coin >= cost
     && (!p.can || p.can(player))
     && (!p.buyCheck || p.buyCheck(player));
-  // 挑战模式 + 除厄: 加诅咒卡片样式 (红色腐化光晕)
   el.className = 'card' + (canBuy ? '' : ' disabled') + (isLockedByChallenge ? ' curse-card' : '');
-  const goodHtml = (p.good || []).map(g => `<div class="g">${g}</div>`).join('');
-  const badHtml = (p.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-  const priceLabel = isLockedByChallenge ? '∞ 金' : `${cost} 金`;
-  el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${p.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${priceLabel}</div>`;
+  const goods = (locale === 'en' && p.goodEn) ? p.goodEn : (p.good || []);
+  const bads  = (locale === 'en' && p.badEn)  ? p.badEn  : (p.bad  || []);
+  const goodHtml = goods.map(g => `<div class="g">${g}</div>`).join('');
+  const badHtml  = bads.map(b => `<div class="b">${b}</div>`).join('');
+  const priceLabel = isLockedByChallenge ? t('shop.priceLocked') : t('shop.price', cost);
+  el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${tn(p)}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${priceLabel}</div>`;
   el.onclick = () => {
     if (!canBuy) return;
     const prev = { hp: player.hp, shield: player.shield };
@@ -4237,7 +4675,7 @@ function makeUniqueSlotCard(it, slotIdx) {
   const el = document.createElement('div');
   if (!it) {
     el.className = 'card unique sold';
-    el.innerHTML = `<div class="ico">·</div><div class="nm">[ 空 槽 ]</div><div class="ds"></div><div class="pr"></div>`;
+    el.innerHTML = `<div class="ico">·</div><div class="nm">${t('shop.emptySlot')}</div><div class="ds"></div><div class="pr"></div>`;
     return el;
   }
   const cost = shopCost(it.cost);
@@ -4245,9 +4683,11 @@ function makeUniqueSlotCard(it, slotIdx) {
     && (!it.can || it.can(player))
     && (!it.buyCheck || it.buyCheck(player));
   el.className = 'card unique' + (canBuy ? '' : ' disabled');
-  const goodHtml = (it.good || []).map(g => `<div class="g">${g}</div>`).join('');
-  const badHtml = (it.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-  el.innerHTML = `<div class="ico">${it.ico}</div><div class="nm">${it.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${cost} 金</div>`;
+  const goods = (locale === 'en' && it.goodEn) ? it.goodEn : (it.good || []);
+  const bads  = (locale === 'en' && it.badEn)  ? it.badEn  : (it.bad  || []);
+  const goodHtml = goods.map(g => `<div class="g">${g}</div>`).join('');
+  const badHtml  = bads.map(b => `<div class="b">${b}</div>`).join('');
+  el.innerHTML = `<div class="ico">${it.ico}</div><div class="nm">${tn(it)}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${t('shop.price', cost)}</div>`;
   el.onclick = () => {
     if (!canBuy) return;
     const prev = { hp: player.hp, shield: player.shield };
@@ -4366,16 +4806,18 @@ function openUniqueChoice() {
   }
   overlay.className = 'overlay show';
   overlay.innerHTML = `
-    <div class="title">★ BOSS 已被击败</div>
-    <div class="subtitle">${pickWord()}解锁神器</div>
+    <div class="title">${t('uniqueChoice.title')}</div>
+    <div class="subtitle">${t('uniqueChoice.sub', pickWord())}</div>
     <div class="cards one-row" id="uniqueChoices" style="--cols:${picks.length}"></div>`;
   const wrap = document.getElementById('uniqueChoices');
   picks.forEach(p => {
     const el = document.createElement('div');
     el.className = 'card unique';
-    const goodHtml = (p.good || []).map(g => `<div class="g">${g}</div>`).join('');
-    const badHtml = (p.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-    el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${p.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${p.cost} 金</div>`;
+    const goods = (locale === 'en' && p.goodEn) ? p.goodEn : (p.good || []);
+    const bads  = (locale === 'en' && p.badEn)  ? p.badEn  : (p.bad  || []);
+    const goodHtml = goods.map(g => `<div class="g">${g}</div>`).join('');
+    const badHtml  = bads.map(b => `<div class="b">${b}</div>`).join('');
+    el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${tn(p)}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${t('shop.price', p.cost)}</div>`;
     el.onclick = () => {
       if (game.uniqueAnimating) return;
       game.uniqueAnimating = true;
@@ -4418,9 +4860,11 @@ function openUniqueChoice() {
         const slot0Rect = slotRow.children[0].getBoundingClientRect();
         const fadeCard = document.createElement('div');
         fadeCard.className = 'card unique';
-        const goodHtml = (displacedItem.good || []).map(g => `<div class="g">${g}</div>`).join('');
-        const badHtml = (displacedItem.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-        fadeCard.innerHTML = `<div class="ico">${displacedItem.ico}</div><div class="nm">${displacedItem.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${displacedItem.cost} 金</div>`;
+        const goods = (locale === 'en' && displacedItem.goodEn) ? displacedItem.goodEn : (displacedItem.good || []);
+        const bads  = (locale === 'en' && displacedItem.badEn)  ? displacedItem.badEn  : (displacedItem.bad  || []);
+        const goodHtml = goods.map(g => `<div class="g">${g}</div>`).join('');
+        const badHtml  = bads.map(b => `<div class="b">${b}</div>`).join('');
+        fadeCard.innerHTML = `<div class="ico">${displacedItem.ico}</div><div class="nm">${tn(displacedItem)}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${t('shop.price', displacedItem.cost)}</div>`;
         Object.assign(fadeCard.style, {
           position: 'fixed',
           left: slot0Rect.left + 'px',
@@ -4482,9 +4926,9 @@ function proceedToNextStage() {
 // 通关 / 失败结算面板: 伤害分类 + 神器 + 普通道具购买
 function buildStatsHtml() {
   const dmgLabels = {
-    bullet: '普通子弹', laser: '超能光束', burn: '燃烧伤害',
-    sentinel: '镭射哨兵', guardian: '神圣守护', missile: '死神飞弹',
-    field: '绝对领域',
+    bullet: t('dmg.bullet'), laser: t('dmg.laser'), burn: t('dmg.burn'),
+    sentinel: t('dmg.sentinel'), guardian: t('dmg.guardian'), missile: t('dmg.missile'),
+    field: t('dmg.field'),
   };
   const dmgItems = Object.entries(game.stats.damage)
     .filter(([_, v]) => v > 0)
@@ -4506,17 +4950,24 @@ function buildStatsHtml() {
   const uniqueEntries = game.stats.uniquesBought
     .map(u => {
       const it = SHOP_UNIQUE.find(s => s.n === u.n || s.ico === u.ico);
-      const goodHtml = (it?.good || []).map(g => `<div class="g">${g}</div>`).join('');
-      const badHtml = (it?.bad || []).map(b => `<div class="b">${b}</div>`).join('');
+      const goods = (locale === 'en' && it?.goodEn) ? it.goodEn : (it?.good || []);
+      const bads  = (locale === 'en' && it?.badEn)  ? it.badEn  : (it?.bad  || []);
+      const goodHtml = goods.map(g => `<div class="g">${g}</div>`).join('');
+      const badHtml  = bads.map(b => `<div class="b">${b}</div>`).join('');
+      const displayName = (it && tn(it)) || u.n;
       return `<div class="card unique" style="cursor:default;pointer-events:none;padding:6px 5px;border-width:1px;border-radius:4px;box-shadow:none;transform:none;min-width:0">
         <div class="ico" style="font-size:clamp(14px,3.2vmin,20px);margin-bottom:2px">${u.ico}</div>
-        <div class="nm" style="font-size:clamp(9px,2vmin,12px);margin:2px 0">${u.n}</div>
+        <div class="nm" style="font-size:clamp(9px,2vmin,12px);margin:2px 0">${displayName}</div>
         <div class="ds" style="font-size:clamp(8px,1.8vmin,10px);min-height:0;gap:1px;line-height:1.35">${goodHtml}${badHtml}</div>
       </div>`;
     })
     .join('');
   const shopEntries = Object.entries(game.stats.shopBought)
-    .map(([n, c]) => `<span style="margin-right:10px">${n}${c > 1 ? ` ×${c}` : ''}</span>`)
+    .map(([n, c]) => {
+      const it = SHOP_ITEMS.find(s => s.n === n);
+      const display = (it && tn(it)) || n;
+      return `<span style="margin-right:10px">${display}${c > 1 ? ` ×${c}` : ''}</span>`;
+    })
     .join('');
   // 用时格式化: 小时 ≥ 1 显示 H:MM:SS, 否则 M:SS
   const totalSec = Math.floor(game.elapsed);
@@ -4526,10 +4977,10 @@ function buildStatsHtml() {
   const pad = n => String(n).padStart(2, '0');
   const elapsedStr = hh > 0 ? `${hh}:${pad(mm)}:${pad(ss)}` : `${mm}:${pad(ss)}`;
   const blocks = [];
-  blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#cfe;font-weight:bold;margin-bottom:4px">⏱ 用时</div><div>${elapsedStr}</div></div>`);
-  if (dmgEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffaa66;font-weight:bold;margin-bottom:6px">💥 伤害统计</div><div style="display:flex;flex-direction:column;gap:7px">${dmgEntries}</div></div>`);
-  if (uniqueEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffd06a;font-weight:bold;margin-bottom:6px">⚜ 神器</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px">${uniqueEntries}</div></div>`);
-  if (shopEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#a4dfff;font-weight:bold;margin-bottom:4px">🛍 普通道具</div><div style="line-height:1.7">${shopEntries}</div></div>`);
+  blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#cfe;font-weight:bold;margin-bottom:4px">${t('detail.duration')}</div><div>${elapsedStr}</div></div>`);
+  if (dmgEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffaa66;font-weight:bold;margin-bottom:6px">${t('detail.damage')}</div><div style="display:flex;flex-direction:column;gap:7px">${dmgEntries}</div></div>`);
+  if (uniqueEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#ffd06a;font-weight:bold;margin-bottom:6px">${t('detail.artifacts')}</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px">${uniqueEntries}</div></div>`);
+  if (shopEntries) blocks.push(`<div style="background:#10101e;border:1px solid #2a2a44;border-radius:4px;padding:8px 12px"><div style="color:#a4dfff;font-weight:bold;margin-bottom:4px">${t('detail.shopItems')}</div><div style="line-height:1.7">${shopEntries}</div></div>`);
   return `<div style="display:flex;flex-direction:column;gap:8px;max-width:380px;width:90%;margin:8px auto;font-size:clamp(10px,2vmin,12px);text-align:left">${blocks.join('')}</div>`;
 }
 
@@ -4563,6 +5014,7 @@ function saveRunToHistory(victory) {
     coin: player.coin,
     elapsed: Math.floor(game.elapsed - (game.runStats?.elapsedAtStart || 0)),
     easyMode: !!game.easyMode,
+    challengeMode: !!game.challengeMode,
     inertiaBody: !!game.inertiaBody,
     endless: !!game.endless,
     damage: { ...game.stats.damage },
@@ -4582,39 +5034,39 @@ function onGameVictory() {
   // 根据触发成就选择标题主题
   const noDamage = !!(game.runStats && game.runStats.damageThisRun === 0);
   const byMissile = !!(game.runStats && game.runStats.victoryByMissile);
-  let title = '★ 通 关 ★';
+  let title = t('victory.title.cleared');
   let centerEmoji = '🏆';
-  let centerLine = '恭 喜 通 关';
+  let centerLine = t('victory.center.cleared');
   let extraLine = '';
   if (byMissile) {
-    title = '杀 身 成 仁';
+    title = t('victory.title.sacrifice');
     centerEmoji = '☠';
-    centerLine = '与 BOSS 同归于尽';
+    centerLine = t('victory.center.sacrifice');
   } else if (noDamage) {
-    title = '专 家';
+    title = t('victory.title.expert');
     centerEmoji = '🏅';
     centerLine = '';
-    extraLine = `<div style="font-size:clamp(9px,2vmin,11px); opacity:0.6; margin-top:6px; line-height:1.5; max-width: 320px; margin-left:auto; margin-right:auto">专家算准剑尖距离, 略微躲开攻击, 因此身体没有受伤, 只有衣服被划破而已。</div>`;
+    extraLine = `<div style="font-size:clamp(9px,2vmin,11px); opacity:0.6; margin-top:6px; line-height:1.5; max-width: 320px; margin-left:auto; margin-right:auto">${t('victory.expertFlavor')}</div>`;
   }
   overlay.innerHTML = `
     <div class="title" style="color:#ffd06a; letter-spacing:8px">${title}</div>
-    <div class="subtitle" style="color:#ffd06a; opacity:0.85">击败第 10 轮 BOSS, 完成游戏</div>
+    <div class="subtitle" style="color:#ffd06a; opacity:0.85">${t('victory.subtitle')}</div>
     <div style="text-align:center; padding: clamp(12px,3vmin,20px) clamp(20px,5vmin,40px); margin: clamp(8px,2vmin,12px) 0; background:#10101e; border:2px solid #ffd06a; border-radius:8px; box-shadow:0 0 26px rgba(255,200,80,0.5);">
       <div style="font-size:clamp(28px,7vmin,42px); margin-bottom:8px">${centerEmoji}</div>
       ${centerLine ? `<div style="color:#ffd06a; font-size:clamp(13px,2.8vmin,15px); margin-bottom:6px">${centerLine}</div>` : ''}
-      <div style="font-size: clamp(10px,2.2vmin,12px); opacity:0.75">坚持到第 ${game.round} 轮 · 等级 ${game.level} · 金币 ${player.coin}</div>
+      <div style="font-size: clamp(10px,2.2vmin,12px); opacity:0.75">${t('victory.heldTo', game.round, game.level, player.coin)}</div>
       ${extraLine}
     </div>
     ${buildStatsHtml()}
     <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:8px">
-      <button id="homeBtn">回到首页</button>
-      <button id="endlessBtn">无尽模式</button>
+      <button id="homeBtn">${t('victory.home')}</button>
+      <button id="endlessBtn">${t('victory.endless')}</button>
     </div>
-    <div style="font-size:clamp(9px,2vmin,11px); opacity:0.55; text-align:center; margin-top:6px">（仅能解锁无尽模式成就）</div>
+    <div style="font-size:clamp(9px,2vmin,11px); opacity:0.55; text-align:center; margin-top:6px">${t('victory.endlessNote')}</div>
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:12px">
       <a href="https://v.wjx.cn/vm/r0UUnQT.aspx#" target="_blank" rel="noreferrer"
-         style="display:inline-block; padding:8px 16px; border:1px solid #6cf; border-radius:4px; color:#dff4ff; text-decoration:none; background:rgba(25,35,52,.88); box-shadow:0 0 14px rgba(102,200,255,.18);">向作者反馈</a>
-      <div style="font-size:clamp(10px,2.2vmin,12px); opacity:0.78; text-align:center">拜托了，你的反馈就是我最大的动力QAQ</div>
+         style="display:inline-block; padding:8px 16px; border:1px solid #6cf; border-radius:4px; color:#dff4ff; text-decoration:none; background:rgba(25,35,52,.88); box-shadow:0 0 14px rgba(102,200,255,.18);">${t('feedback.link')}</a>
+      <div style="font-size:clamp(10px,2.2vmin,12px); opacity:0.78; text-align:center">${t('feedback.note')}</div>
     </div>`;
   document.getElementById('homeBtn').onclick = showStartScreen;
   document.getElementById('endlessBtn').onclick = enterEndlessMode;
@@ -4641,17 +5093,17 @@ function onGameOver() {
     overlay.className = 'overlay show';
     const canRetry = !!game.waveSnapshot;
     overlay.innerHTML = `
-      <div class="title">飞机坠毁</div>
-      <div class="subtitle">坚持到第 ${game.round} 轮 · 第 ${game.wave} 波</div>
+      <div class="title">${t('gameover.title')}</div>
+      <div class="subtitle">${t('gameover.sub', game.round, game.wave)}</div>
       ${buildStatsHtml()}
       <div style="display:flex; flex-direction:column; gap:8px; align-items:center; margin-top:6px">
-        ${canRetry ? `<button id="retryBtn" style="padding: clamp(11px, 2.8vmin, 16px) clamp(30px, 7vmin, 48px); font-size: clamp(14px, 3vmin, 17px); border-color:#6cf; box-shadow:0 0 18px rgba(102,200,255,.22);">重试本波</button>` : ''}
-        <button id="restart" style="padding: clamp(5px, 1.4vmin, 8px) clamp(12px, 3vmin, 18px); font-size: clamp(10px, 2.2vmin, 12px); background:#5a1a1a; color:#ffd6d6; border-color:#9a3a3a;">放弃尝试</button>
+        ${canRetry ? `<button id="retryBtn" style="padding: clamp(11px, 2.8vmin, 16px) clamp(30px, 7vmin, 48px); font-size: clamp(14px, 3vmin, 17px); border-color:#6cf; box-shadow:0 0 18px rgba(102,200,255,.22);">${t('gameover.retry')}</button>` : ''}
+        <button id="restart" style="padding: clamp(5px, 1.4vmin, 8px) clamp(12px, 3vmin, 18px); font-size: clamp(10px, 2.2vmin, 12px); background:#5a1a1a; color:#ffd6d6; border-color:#9a3a3a;">${t('gameover.giveup')}</button>
       </div>
       <div style="display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:12px">
         <a href="https://v.wjx.cn/vm/r0UUnQT.aspx#" target="_blank" rel="noreferrer"
-           style="display:inline-block; padding:8px 16px; border:1px solid #6cf; border-radius:4px; color:#dff4ff; text-decoration:none; background:rgba(25,35,52,.88); box-shadow:0 0 14px rgba(102,200,255,.18);">向作者反馈</a>
-        <div style="font-size:clamp(10px,2.2vmin,12px); opacity:0.78; text-align:center">拜托了，你的反馈就是我最大的动力QAQ</div>
+           style="display:inline-block; padding:8px 16px; border:1px solid #6cf; border-radius:4px; color:#dff4ff; text-decoration:none; background:rgba(25,35,52,.88); box-shadow:0 0 14px rgba(102,200,255,.18);">${t('feedback.link')}</a>
+        <div style="font-size:clamp(10px,2.2vmin,12px); opacity:0.78; text-align:center">${t('feedback.note')}</div>
       </div>`;
     if (canRetry) document.getElementById('retryBtn').onclick = retryWave;
     document.getElementById('restart').onclick = showStartScreen;
@@ -5200,10 +5652,10 @@ function draw() {
     ctx.font = 'bold 36px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('已 暂 停', W / 2, H / 2);
+    ctx.fillText(t('pause.title'), W / 2, H / 2);
     ctx.font = '13px sans-serif';
     ctx.fillStyle = 'rgba(200,220,240,0.7)';
-    ctx.fillText('点击右上角按钮恢复', W / 2, H / 2 + 40);
+    ctx.fillText(t('pause.hint'), W / 2, H / 2 + 40);
     ctx.textBaseline = 'alphabetic';
   } else if (game.state === 'resuming') {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
@@ -5784,28 +6236,26 @@ function drawBossHpBar(b) {
 
 // ============== UI 文本 ==============
 function updateUI() {
-  document.getElementById('round').textContent = game.round;
-  document.getElementById('wave').textContent = game.wave + (game.wave === game.wavesPerRound ? ' (BOSS)' : '');
-  document.getElementById('level').textContent = game.level;
-  document.getElementById('kill').textContent = game.killCount;
-  document.getElementById('killNeed').textContent = game.killForLevel;
+  const waveStr = game.wave + (game.wave === game.wavesPerRound ? ' (BOSS)' : '');
+  document.getElementById('hudRoundLine').textContent = t('hud.roundWave', game.round, waveStr);
+  document.getElementById('hudLevelLine').textContent = t('hud.levelExp', game.level, game.killCount, game.killForLevel);
   document.getElementById('expBar').style.width = clamp(game.killCount / game.killForLevel, 0, 1) * 100 + '%';
-  document.getElementById('coin').textContent = player.coin;
+  document.getElementById('hudCoinLine').textContent = t('hud.coin', player.coin);
   // 玩家属性: 一项一行右对齐
   const lines = [];
-  lines.push(`攻击 ${player.atk.toFixed(1)}`);
-  lines.push(`射速 ${player.fireRate.toFixed(2)}/s`);
-  lines.push(`弹体 ×${player.bulletSize.toFixed(2)}`);
-  lines.push(`弹速 ${Math.round(player.bulletSpeed)}`);
-  lines.push(`移速 ${Number.isFinite(player.moveSpeed) ? Math.round(player.moveSpeed) : '∞'}`);
-  lines.push(`暴击 ${(player.critRate*100).toFixed(0)}%`);
-  lines.push(`暴伤 ×${player.critDmg.toFixed(2)}`);
-  if (player.projectiles > 1) lines.push(`<span class="extra">弹道 ${player.projectiles}</span>`);
-  if (player.cyclops) lines.push(`<span class="extra">穿透 ∞</span>`);
-  else if (player.pierce > 0) lines.push(`<span class="extra">穿透 ${player.pierce}</span>`);
-  if (player.homing > 0 && !player.gravityMastery) lines.push(`<span class="extra">追踪</span>`);
-  if (player.evade > 0) lines.push(`<span class="extra">闪避 ${(player.evade*100).toFixed(0)}%</span>`);
-  if (player.burnStacks > 0) lines.push(`<span class="extra">燃烧 +${player.burnStacks}/命中</span>`);
+  lines.push(`${t('hud.atk')} ${player.atk.toFixed(1)}`);
+  lines.push(`${t('hud.fireRate')} ${player.fireRate.toFixed(2)}/s`);
+  lines.push(`${t('hud.bulletSize')} ×${player.bulletSize.toFixed(2)}`);
+  lines.push(`${t('hud.bulletSpeed')} ${Math.round(player.bulletSpeed)}`);
+  lines.push(`${t('hud.moveSpeed')} ${Number.isFinite(player.moveSpeed) ? Math.round(player.moveSpeed) : '∞'}`);
+  lines.push(`${t('hud.crit')} ${(player.critRate*100).toFixed(0)}%`);
+  lines.push(`${t('hud.critDmg')} ×${player.critDmg.toFixed(2)}`);
+  if (player.projectiles > 1) lines.push(`<span class="extra">${t('hud.projectiles')} ${player.projectiles}</span>`);
+  if (player.cyclops) lines.push(`<span class="extra">${t('hud.pierce')} ∞</span>`);
+  else if (player.pierce > 0) lines.push(`<span class="extra">${t('hud.pierce')} ${player.pierce}</span>`);
+  if (player.homing > 0 && !player.gravityMastery) lines.push(`<span class="extra">${t('hud.homing')}</span>`);
+  if (player.evade > 0) lines.push(`<span class="extra">${t('hud.evade')} ${(player.evade*100).toFixed(0)}%</span>`);
+  if (player.burnStacks > 0) lines.push(`<span class="extra">${t('hud.burn', player.burnStacks)}</span>`);
   document.getElementById('stats').innerHTML = lines.map(s => `<div>${s}</div>`).join('');
   // 已持有神器 chip 行: 仅当集合变化时重建 (避免每帧 attach 监听)
   refreshOwnedUniques();
@@ -5834,9 +6284,11 @@ const _uniqueTooltip = document.getElementById('uniqueTooltip');
 function showUniqueTooltip(chip, id) {
   const it = SHOP_UNIQUE.find(u => u.id === id);
   if (!it) return;
-  const goodHtml = (it.good || []).map(g => `<div class="g">${g}</div>`).join('');
-  const badHtml = (it.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-  _uniqueTooltip.innerHTML = `<div class="nm">${it.ico} ${it.n}</div>${goodHtml}${badHtml}`;
+  const goods = (locale === 'en' && it.goodEn) ? it.goodEn : (it.good || []);
+  const bads  = (locale === 'en' && it.badEn)  ? it.badEn  : (it.bad  || []);
+  const goodHtml = goods.map(g => `<div class="g">${g}</div>`).join('');
+  const badHtml  = bads.map(b => `<div class="b">${b}</div>`).join('');
+  _uniqueTooltip.innerHTML = `<div class="nm">${it.ico} ${tn(it)}</div>${goodHtml}${badHtml}`;
   // 先 show 再测量, 然后根据屏幕宽度反向贴边
   _uniqueTooltip.classList.add('show');
   const r = chip.getBoundingClientRect();
