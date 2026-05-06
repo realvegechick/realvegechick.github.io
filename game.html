@@ -18,11 +18,15 @@
     overflow:hidden; user-select:none; -webkit-user-select:none;
     overscroll-behavior:none; touch-action:none;
   }
-  /* 容器铺满屏幕, 不再锁定比例 (适配任意手机分辨率) */
+  /* 容器锁 480:720 (2:3) 比例, 等比缩放至屏幕可容纳的最大尺寸 (居中, 多余空间留黑) */
+  body { background:#000; }
   #wrap {
     position:relative;
-    width: 100vw;
-    height: 100dvh;
+    width: min(100vw, calc(100dvh * 480 / 720));
+    height: min(100dvh, calc(100vw * 720 / 480));
+    max-width: 100vw;
+    max-height: 100dvh;
+    margin: auto;
   }
   canvas {
     display:block; width:100%; height:100%;
@@ -567,13 +571,13 @@
 "use strict";
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
-// 画布尺寸跟随屏幕 (CSS 像素), 内部分辨率乘以 DPR 保证清晰. resize 时同步更新.
+// 画布尺寸跟随容器 CSS 实际宽高 (容器锁 2:3 比例). 内部分辨率乘以 DPR 保证清晰.
 let W = 0, H = 0;
 function resizeCanvas() {
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const cssW = window.innerWidth, cssH = window.innerHeight;
-  cvs.style.width = cssW + 'px';
-  cvs.style.height = cssH + 'px';
+  const rect = cvs.getBoundingClientRect();
+  const cssW = Math.max(1, Math.round(rect.width));
+  const cssH = Math.max(1, Math.round(rect.height));
   cvs.width = Math.round(cssW * dpr);
   cvs.height = Math.round(cssH * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -685,6 +689,7 @@ function nudgeHtmlBgm() {
   if (document.hidden) return;
   if (bgm.paused || bgm.ended) ensureBgm();
 }
+
 
 // H5 / 移动端常会拦截首帧播放, 这里用首个用户手势做一次兜底解锁
 ['pointerdown', 'touchstart', 'keydown', 'click'].forEach(ev => {
