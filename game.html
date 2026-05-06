@@ -717,6 +717,7 @@ function getBossVertices(e) {
 const game = {
   state: 'start',
   easyMode: false,
+  challengeMode: false,
   inertiaBullet: false,
   inertiaBody: false,
   round: 1, wave: 1,
@@ -756,29 +757,35 @@ const ACHIEVEMENTS = [
   { id:'destroyBeam',   n:'破坏死光',  desc:'攻速达到 20.0 且持有超能光束' },
   { id:'mighty',        n:'势大力沉',  desc:'攻击力超过 1000' },
   { id:'mercyKill',     n:'恩赐解脱',  desc:'触发一次三重暴击' },
-  { id:'cyclotomy',     n:'割圆术',    desc:'持有引力掌握, 同时存在 300 颗以上的子弹' },
+  { id:'cyclotomy',     n:'割圆术',    desc:'持有引力掌握且存在 300 颗以上子弹' },
   { id:'onTheEdge',     n:'命悬一线',  desc:'击败最终 BOSS 时仅剩 1 生命且无护盾' },
   { id:'glassCannon',   n:'玻璃大炮',  desc:'达成生命上限为 1 且护盾上限为 0' },
   { id:'middleWay',     n:'中庸之道',  desc:'同时持有快速充能和高容护盾' },
-  { id:'versatile',     n:'百般武艺',  desc:'游戏结算时伤害来源超过 5 种' },
+  { id:'versatile',     n:'百般武艺',  desc:'结算时伤害来源超过 5 种' },
   { id:'pureHeart',     n:'纯净心灵',  desc:'净化所有诅咒' },
   { id:'physicsMaster', n:'物理大师',  desc:'勾选物理模拟的情况下通关一次游戏' },
   { id:'demonFire',     n:'恶魔之焰',  desc:'单局游戏中, 契约状态下施加 1,000,000 层燃烧' },
   { id:'daredevil',     n:'胆大心细',  desc:'飞过 BOSS 背后' },
   { id:'timeParadox',   n:'时间悖论',  desc:'单波次中触发 10 次时空断裂' },
-  { id:'medicCraft',    n:'妙手回春',  desc:'单局通过战斗维修回复超过 10 生命' },
-  { id:'bloodthirst',   n:'嗜血成性',  desc:'单局通过罪恶快感回复超过 10 生命' },
-  { id:'closeQuarters', n:'近身搏斗',  desc:'单局通过绝对领域 & 神圣守护造成超过 1,000,000 伤害' },
-  { id:'pickyEater',    n:'口味挑剔',  desc:'单局游戏中刷新商店超过 30 次' },
+  { id:'medicCraft',    n:'妙手回春',  desc:'单局游戏中, 通过战斗维修回复超过 10 生命' },
+  { id:'bloodthirst',   n:'嗜血成性',  desc:'单局游戏中, 通过罪恶快感回复超过 10 生命' },
+  { id:'closeQuarters', n:'近身搏斗',  desc:'单局游戏中, 通过绝对领域 & 神圣守护造成超过 1,000,000 伤害' },
+  { id:'pickyEater',    n:'口味挑剔',  desc:'单局游戏中, 刷新商店超过 30 次' },
   { id:'miser',         n:'守财奴',    desc:'贪婪诅咒波次中, 不被扣除任何金币' },
   { id:'panic',         n:'惊魂时刻',  desc:'1 秒钟内受到 3 点以上伤害' },
   { id:'mockingbird',   n:'拙劣模仿',  desc:'嫉妒诅咒波次中, 不被镜像击中' },
   { id:'crushing',      n:'摧枯拉朽',  desc:'10 秒内击败最终 BOSS' },
-  { id:'flawless',      n:'毫发无损',  desc:'无伤击败最终 BOSS' },
-  { id:'expert',        n:'专家',      desc:'无伤通关一次游戏' },
+  { id:'flawless',      n:'毫发无损',  desc:'击败最终 BOSS 全程不失去生命值' },
+  { id:'expert',        n:'专家',      desc:'通关全程不失去生命值' },
   { id:'ecoMode',       n:'节能模式',  desc:'弹速 & 移速均低于 100' },
-  { id:'blitz',         n:'闪电作战',  desc:'15 分钟内通关一次游戏' },
+  { id:'blitz',         n:'闪电作战',  desc:'20 分钟内通关一次游戏' },
   { id:'selfSacrifice', n:'杀身成仁',  desc:'通过殉爆伤害击败最终 BOSS' },
+  { id:'barehanded',    n:'赤手空拳',  desc:'通关时未持有任何神器' },
+  { id:'nextRound',     n:'下局再用',  desc:'通关时持有至少 1000 金币' },
+  { id:'hardcore',      n:'硬核模式',  desc:'通关全程未使用"重试本波"' },
+  { id:'peakClimber',   n:'勇攀高峰',  desc:'通关一次挑战模式' },
+  { id:'numericInflation', n:'数值膨胀', desc:'无尽模式下, 通过第 20 轮 BOSS 波次', endlessOnly: true },
+  { id:'collector',     n:'收藏家',    desc:'解锁所有其它成就' },
 ];
 
 const saveState = { unlocked: new Set(), history: [] };
@@ -803,9 +810,23 @@ function tryUnlock(id) {
   if (saveState.unlocked.has(id)) return;
   const def = ACHIEVEMENTS.find(a => a.id === id);
   if (!def) return;
+  // 简单模式不计入任何成就
+  if (game.easyMode) return;
+  // 普通成就在无尽模式下不计入; endlessOnly 成就只能在无尽模式下解锁
+  if (def.endlessOnly) {
+    if (!game.endless) return;
+  } else if (game.endless && id !== 'collector') {
+    // collector 例外: 任何模式下其他成就齐了都自动跟上
+    return;
+  }
   saveState.unlocked.add(id);
   persistSaveState();
   showAchievementToast(def);
+  // collector: 解锁本次后, 所有其他成就是否都已解锁
+  if (id !== 'collector') {
+    const others = ACHIEVEMENTS.filter(a => a.id !== 'collector');
+    if (others.every(a => saveState.unlocked.has(a.id))) tryUnlock('collector');
+  }
 }
 const _achToasts = [];
 function showAchievementToast(def) {
@@ -870,13 +891,19 @@ function checkRuntimeAchievements() {
   if (player.uniqueOwned['fastcharge'] && player.uniqueOwned['bigshield']) tryUnlock('middleWay');
   if (player.bulletSpeed < 100 && player.moveSpeed < 100) tryUnlock('ecoMode');
   if (player.uniqueOwned['gravitymastery'] && bullets.length >= 300) tryUnlock('cyclotomy');
-  // 胆大心细: 飞过 BOSS 背后 (boss alive 且 player.y < boss.y)
+  // 胆大心细: 玩家位置高于 boss, 且从 boss 一侧飞到了另一侧
+  // 实现: 在 boss 上方时记录当前所在侧 (-1 / 1), 离开上方区域时保留. 下次再次在上方且侧别相反 → 解锁
   if (!game.runStats.daredevilFired) {
-    for (const e of enemies) {
-      if (e.boss && !e.dead && player.y < e.y - 10) {
+    let bossE = null;
+    for (const e of enemies) if (e.boss && !e.dead) { bossE = e; break; }
+    if (bossE && player.y < bossE.y - 10) {
+      const side = player.x < bossE.x ? -1 : 1;
+      const last = game.runStats.daredevilSide || 0;
+      if (last !== 0 && last !== side) {
         game.runStats.daredevilFired = true;
         tryUnlock('daredevil');
-        break;
+      } else {
+        game.runStats.daredevilSide = side;
       }
     }
   }
@@ -1055,10 +1082,10 @@ function recompute() {
     player.bulletSpeed *= 0.5;
     player.moveSpeed *= 0.5;
   }
-  // 体型派生: 巨人形态 ×1.5, 暴食诅咒 ×1.5 (可叠加)
+  // 体型派生: 巨人形态 ×1.5, 暴食诅咒 ×1.5 (挑战模式 ×2)
   let r = 13;
   if (player.bigForm) r *= 1.5;
-  if (game.activeCurses.has('gluttony')) r *= 1.5;
+  if (game.activeCurses.has('gluttony')) r *= game.challengeMode ? 2 : 1.5;
   player.r = Math.round(r);
   player.magnetRange = (player.baseMagnetRange || 90) * (game.activeCurses.has('greed') ? 2 : 1);
   if (player.gravityMastery) player.magnetRange *= 1.5;
@@ -1454,7 +1481,10 @@ function showStartScreen() {
       <div class="start-mode-row">
         <button id="easyBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">简单模式</button>
                     <div class="start-mode-note">4血4盾，降低敌人弹速，无诅咒、无负面代价</div>
+                    <div class="start-mode-note" style="opacity:0.55">（简单模式下无法解锁成就）</div>
         <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">普通模式</button>
+        <button id="challengeBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px); background: linear-gradient(180deg, rgba(120, 50, 50, 0.96), rgba(70, 20, 20, 0.96)); border-color: rgba(255, 140, 140, 0.8); color: #ffe2e2;">挑战模式</button>
+        <div class="start-mode-note">敌人提速 / 诅咒强化 / 不可净化诅咒</div>
         <label class="start-mode-note" style="display:flex; align-items:center; gap:8px; justify-content:center; margin-top:6px">
           <input type="checkbox" id="inertiaBodyChk" />
           <span>物理模拟（飞机物理摆动并影响发射偏角）</span>
@@ -1470,6 +1500,7 @@ function showStartScreen() {
   });
   document.getElementById('startBtn').onclick = () => startGame('normal', readInertia());
   document.getElementById('easyBtn').onclick = () => startGame('easy', readInertia());
+  document.getElementById('challengeBtn').onclick = () => startGame('challenge', readInertia());
   document.getElementById('achievementsBtn').onclick = openAchievementsModal;
   document.getElementById('historyBtn').onclick = openHistoryModal;
 }
@@ -1602,6 +1633,7 @@ function startGame(mode = 'normal', opts = {}) {
   overlay.innerHTML = '';
   game.state = 'playing';
   game.easyMode = mode === 'easy';
+  game.challengeMode = mode === 'challenge';
   game.inertiaBullet = false;
   game.inertiaBody = !!opts.inertiaBody;
   if (player.curvatureEngine) game.inertiaBullet = true;
@@ -2010,6 +2042,12 @@ function spawnEnemy(s) {
     e.summoned = true;
     e.coin = 0; // 召唤的敌人不掉金币
   }
+  // 挑战模式: 移速 +20%
+  if (game.challengeMode) {
+    if (typeof e.vx === 'number') e.vx *= 1.2;
+    if (typeof e.vy === 'number') e.vy *= 1.2;
+    if (typeof e.maxSpeed === 'number') e.maxSpeed *= 1.2;
+  }
   enemies.push(e);
 }
 
@@ -2045,7 +2083,9 @@ function bossSummonWave(boss) {
 // 受击与玩家一致 (优先扣盾, 大幅无敌时间). 撞玩家/光球: 双向清盾/即死.
 function spawnMirrorEnemy() {
   const m = {
-    x: rand(80, W - 80), y: -50,
+    // 挑战模式: 出场即位于玩家关于屏幕横向中线 (y=H/2) 的镜像位置
+    x: game.challengeMode ? player.x : rand(80, W - 80),
+    y: game.challengeMode ? H - player.y : -50,
     r: player.r,
     type: 'mirror',
     // 镜像出场时血盾全满, 只继承玩家上限不继承当前剩余
@@ -2075,14 +2115,24 @@ function spawnMirrorEnemy() {
 }
 
 function mirrorFire(e) {
-  const aim = Math.atan2(player.y - e.y, player.x - e.x);
   const n = e.projectiles;
   const spread = e.spread ?? 0.16;
   const total = spread * (n - 1);
   const sp = e.bulletSpeed || 360;
+  let baseAim, spreadSign;
+  if (game.challengeMode) {
+    // 挑战模式: 玩家向上发射, 镜像向下发射. 物理模拟下二者左右对称
+    // 玩家 baseAim = -π/2 + aimRot. 关于 y=H/2 镜像 → 反 y 分量 → 角度取相反数 → π/2 - aimRot
+    const aimRot = game.inertiaBody ? player.aimRot : 0;
+    baseAim = Math.PI / 2 - aimRot;
+    spreadSign = -1; // 扩散方向也对称
+  } else {
+    baseAim = Math.atan2(player.y - e.y, player.x - e.x);
+    spreadSign = 1;
+  }
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : (i / (n - 1) - 0.5);
-    const a = aim + t * total;
+    const a = baseAim + spreadSign * t * total;
     // 镜像子弹继承玩家穿透 → 在 parry 抵消时按相同规则消耗 pierce
     bullets.push({
       x: e.x, y: e.y,
@@ -2112,26 +2162,32 @@ function updateMirror(e, dt) {
       e.shield = Math.min(e.maxShield, e.shield + 1);
     }
   }
-  // 维持 200px 距离的简单 AI
-  const dx = player.x - e.x, dy = player.y - e.y;
-  const d = Math.hypot(dx, dy) || 1;
-  const ideal = 200;
-  let vx, vy;
-  if (d > ideal + 50) {
-    vx = (dx / d) * e.moveSpeed;
-    vy = (dy / d) * e.moveSpeed;
-  } else if (d < ideal - 50) {
-    vx = -(dx / d) * e.moveSpeed * 0.7;
-    vy = -(dy / d) * e.moveSpeed * 0.7;
+  if (game.challengeMode) {
+    // 挑战模式: 镜像位置永远关于屏幕横向中线对称 (与玩家对称)
+    e.x = player.x;
+    e.y = H - player.y;
   } else {
-    // 切线绕飞 + 微抖
-    vx = (-dy / d) * e.moveSpeed * 0.6 * Math.sin(e.t * 1.5 + e.sinPhase);
-    vy = (dx / d) * e.moveSpeed * 0.6 * Math.sin(e.t * 1.5 + e.sinPhase);
+    // 维持 200px 距离的简单 AI
+    const dx = player.x - e.x, dy = player.y - e.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const ideal = 200;
+    let vx, vy;
+    if (d > ideal + 50) {
+      vx = (dx / d) * e.moveSpeed;
+      vy = (dy / d) * e.moveSpeed;
+    } else if (d < ideal - 50) {
+      vx = -(dx / d) * e.moveSpeed * 0.7;
+      vy = -(dy / d) * e.moveSpeed * 0.7;
+    } else {
+      // 切线绕飞 + 微抖
+      vx = (-dy / d) * e.moveSpeed * 0.6 * Math.sin(e.t * 1.5 + e.sinPhase);
+      vy = (dx / d) * e.moveSpeed * 0.6 * Math.sin(e.t * 1.5 + e.sinPhase);
+    }
+    e.x += vx * dt;
+    e.y += vy * dt;
+    e.x = clamp(e.x, e.r, W - e.r);
+    e.y = clamp(e.y, e.r, H * 0.7); // 不让它太靠近底部, 给玩家空间
   }
-  e.x += vx * dt;
-  e.y += vy * dt;
-  e.x = clamp(e.x, e.r, W - e.r);
-  e.y = clamp(e.y, e.r, H * 0.7); // 不让它太靠近底部, 给玩家空间
   // 攻击周期: 连续射击 1.5s 后暂停 0.5s
   e.cycleT = (e.cycleT + dt) % 2.0;
   if (e.cycleT < 1.5) {
@@ -3027,6 +3083,7 @@ function missileImpact(b, direct) {
 
 function spawnEnemyBullet(x, y, a, sp, dmg) {
   if (game.easyMode) sp *= 0.8;
+  if (game.challengeMode) sp *= 1.1;
   bullets.push({ x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, r: 5, dmg, from:'enemy' });
 }
 
@@ -3263,7 +3320,7 @@ function collideKill() {
     game.shake = 0.45;
     floats.push({ x: player.x, y: player.y, t: 0.75, life: 0.75, txt: '撞击破盾！', color: '#7df', size: 14 });
     // 排斥力场: 盾被击破也算受到伤害, 触发后无敌延长到 1.0
-    if (player.shockwaveOnHit) {
+    if (player.shockwaveOnHit && !prideBlocksAll()) {
       spawnShockwave(player.x, player.y, 220);
       if (!game.activeCurses.has('pride')) inv = Math.max(inv, 1.0);
     }
@@ -3273,7 +3330,7 @@ function collideKill() {
     if (tryVoidSave()) {
       player.shieldDelay = player.shieldRegenDelayBase;
       player.shieldRegenT = 0;
-      if (player.shockwaveOnHit) spawnShockwave(player.x, player.y, 220);
+      if (player.shockwaveOnHit && !prideBlocksAll()) spawnShockwave(player.x, player.y, 220);
       return;
     }
     // 死神飞弹殉爆: 无盾被撞 → 飞弹在玩家身上引爆, 直接死亡
@@ -3310,6 +3367,8 @@ function collideKill() {
       // 链式殉爆伤害源: 玩家殉爆前的生命值. 每次爆炸 = n × 30 × atk
       const savedHp = Math.max(0, player.hp);
       const chainDmg = savedHp * 30 * player.atk;
+      // 殉爆失去的生命算入"受到伤害"统计 → 取消"无伤通关"判定
+      recordDamage(savedHp);
       // 链式殉爆: 玩家周围 3 个随机点错时引爆, 各自造成 chainDmg 范围伤害
       const px = player.x, py = player.y;
       for (let i = 0; i < 3; i++) {
@@ -3372,7 +3431,7 @@ function collideKill() {
     game.shake = 0.5;
     floats.push({ x: player.x, y: player.y, t: 0.7, life: 0.7, txt: '-' + dmg, color: '#f44', size: 16 });
     // 排斥力场: 受击触发, 触发后无敌延长到 1.0
-    if (player.shockwaveOnHit && player.hp > 0) {
+    if (player.shockwaveOnHit && player.hp > 0 && !prideBlocksAll()) {
       spawnShockwave(player.x, player.y, 220);
       if (!game.activeCurses.has('pride')) inv = Math.max(inv, 1.0);
     }
@@ -3504,7 +3563,13 @@ function triggerTimeRift() {
 }
 
 // 虚无形态救援: 即将失去生命值时触发, 5 秒无敌 + 30 秒冷却. 返回是否触发成功
+// 挑战模式 + 傲慢: 屏蔽所有受击触发的防御效果 (闪避 / 冲击波 / 虚无)
+function prideBlocksAll() {
+  return game.challengeMode && game.activeCurses.has('pride');
+}
+
 function tryVoidSave() {
+  if (prideBlocksAll()) return false;
   if (!player.voidForm) return false;
   if (player.voidActiveT > 0 || player.voidCooldownT > 0) return false;
   player.voidActiveT = 5;
@@ -3517,7 +3582,7 @@ function tryVoidSave() {
 // 所有敌人攻击 = 1 格. 优先扣盾, 否则扣血. 闪避概率完全免伤。
 function damagePlayer() {
   if (player.invuln > 0) return;
-  if (player.evade > 0 && Math.random() < player.evade) {
+  if (player.evade > 0 && !prideBlocksAll() && Math.random() < player.evade) {
     // 闪避: 给 0.5 秒无敌 (不受傲慢影响)
     player.invuln = Math.max(player.invuln, 0.5);
     floats.push({ x: player.x, y: player.y - 10, t: 0.7, life: 0.7, txt: '闪避!', color: '#7df', size: 15 });
@@ -3545,7 +3610,7 @@ function damagePlayer() {
   player.shieldRegenT = 0;
   // 排斥力场: 受到伤害即触发冲击波, 并把受击无敌延长到 1.0 秒
   let baseInv = game.activeCurses.has('pride') ? 0 : 0.8;
-  if (player.shockwaveOnHit && player.hp > 0) {
+  if (player.shockwaveOnHit && player.hp > 0 && !prideBlocksAll()) {
     spawnShockwave(player.x, player.y, 220);
     if (!game.activeCurses.has('pride')) baseInv = Math.max(baseInv, 1.0);
   }
@@ -3580,7 +3645,7 @@ const LEVEL_OPTIONS = [
     desc: () => {
       const cur = player.evade;
       const nxt = Math.min(0.80, cur + 0.06);
-      return `+6%（上限 80%）   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
+      return `受击时 +6% 概率闪避（上限 80%）   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
     apply: () => { player.evade = Math.min(0.80, player.evade + 0.06); } },
   { n:'弹体大小', icon:'●',
@@ -3680,7 +3745,7 @@ const SHOP_ITEMS = [
       p.shield = Math.max(0, p.maxShield);
     } },
   { n:'闪避装置', ico:'▣', cost:33,
-    good:['闪避 +8% (上限 80%)'], bad:[],
+    good:['受击时 +8% 概率闪避（上限 80%）'], bad:[],
     apply: p => { p.evade = Math.min(0.80, p.evade + 0.08); } },
   { n:'暴击核心', ico:'✸', cost:40,
     good:['暴击率 +10%', '暴击伤害 +30%'], bad:[],
@@ -3772,7 +3837,7 @@ const SHOP_UNIQUE = [
       recompute();
     } },
   { id:'void', n:'幽魂形态', ico:'○', cost:120, unique:true,
-    good:['即将失去生命时进入 5 秒无敌 (30 秒冷却)'], bad:[],
+    good:['受到生命值伤害时, 改为进入 5 秒无敌 (30 秒冷却)'], bad:[],
     apply: p => {
       p.voidForm = true;
       p.voidActiveT = 0;
@@ -4093,14 +4158,19 @@ function makeNormalCard(p, idx) {
     el.innerHTML = `<div class="ico">·</div><div class="nm">已售出</div><div class="ds"></div><div class="pr"></div>`;
     return el;
   }
+  // 挑战模式: 除厄价格无穷大, 无法购买
+  const isLockedByChallenge = game.challengeMode && p.n === '除厄';
   const cost = shopCost(p.cost);
-  const canBuy = player.coin >= cost
+  const canBuy = !isLockedByChallenge
+    && player.coin >= cost
     && (!p.can || p.can(player))
     && (!p.buyCheck || p.buyCheck(player));
-  el.className = 'card' + (canBuy ? '' : ' disabled');
+  // 挑战模式 + 除厄: 加诅咒卡片样式 (红色腐化光晕)
+  el.className = 'card' + (canBuy ? '' : ' disabled') + (isLockedByChallenge ? ' curse-card' : '');
   const goodHtml = (p.good || []).map(g => `<div class="g">${g}</div>`).join('');
   const badHtml = (p.bad || []).map(b => `<div class="b">${b}</div>`).join('');
-  el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${p.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${cost} 金</div>`;
+  const priceLabel = isLockedByChallenge ? '∞ 金' : `${cost} 金`;
+  el.innerHTML = `<div class="ico">${p.ico}</div><div class="nm">${p.n}</div><div class="ds">${goodHtml}${badHtml}</div><div class="pr">${priceLabel}</div>`;
   el.onclick = () => {
     if (!canBuy) return;
     const prev = { hp: player.hp, shield: player.shield };
@@ -4168,6 +4238,7 @@ function snapshotWave() {
 
 function retryWave() {
   if (!game.waveSnapshot) return;
+  if (game.runStats) game.runStats.usedRetry = true;
   const s = game.waveSnapshot;
   // 恢复玩家状态
   player.hp = s.hp;
@@ -4348,6 +4419,8 @@ function proceedToNextStage() {
       onGameVictory();
       return;
     }
+    // 数值膨胀 (无尽专属): 通过第 20 轮 boss 波次
+    if (game.endless && game.round === 20) tryUnlock('numericInflation');
     game.round++; game.wave = 1;
     if (game.endless) openShop(true);
     else openUniqueChoice(); // 先三选一独特, 再进商店
@@ -4420,9 +4493,14 @@ function checkEndOfRunAchievements(victory) {
   if (closeQ > 1000000) tryUnlock('closeQuarters');
   if (victory) {
     const dur = game.elapsed - (game.runStats.elapsedAtStart || 0);
-    if (dur < 900) tryUnlock('blitz');
+    if (dur < 1200) tryUnlock('blitz');
     if (game.runStats.inertiaBodyAtStart) tryUnlock('physicsMaster');
     if (game.runStats.damageThisRun === 0) tryUnlock('expert');
+    const ownedCount = Object.keys(player.uniqueOwned || {}).filter(k => player.uniqueOwned[k]).length;
+    if (ownedCount === 0) tryUnlock('barehanded');
+    if (player.coin >= 1000) tryUnlock('nextRound');
+    if (!game.runStats.usedRetry) tryUnlock('hardcore');
+    if (game.challengeMode) tryUnlock('peakClimber');
   }
 }
 
@@ -4466,7 +4544,7 @@ function onGameVictory() {
   } else if (noDamage) {
     title = '专 家';
     centerEmoji = '🏅';
-    centerLine = '无伤通关';
+    centerLine = '';
     extraLine = `<div style="font-size:clamp(9px,2vmin,11px); opacity:0.6; margin-top:6px; line-height:1.5; max-width: 320px; margin-left:auto; margin-right:auto">专家算准剑尖距离, 略微躲开攻击, 因此身体没有受伤, 只有衣服被划破而已。</div>`;
   }
   overlay.innerHTML = `
@@ -4474,7 +4552,7 @@ function onGameVictory() {
     <div class="subtitle" style="color:#ffd06a; opacity:0.85">击败第 10 轮 BOSS, 完成游戏</div>
     <div style="text-align:center; padding: clamp(12px,3vmin,20px) clamp(20px,5vmin,40px); margin: clamp(8px,2vmin,12px) 0; background:#10101e; border:2px solid #ffd06a; border-radius:8px; box-shadow:0 0 26px rgba(255,200,80,0.5);">
       <div style="font-size:clamp(28px,7vmin,42px); margin-bottom:8px">${centerEmoji}</div>
-      <div style="color:#ffd06a; font-size:clamp(13px,2.8vmin,15px); margin-bottom:6px">${centerLine}</div>
+      ${centerLine ? `<div style="color:#ffd06a; font-size:clamp(13px,2.8vmin,15px); margin-bottom:6px">${centerLine}</div>` : ''}
       <div style="font-size: clamp(10px,2.2vmin,12px); opacity:0.75">坚持到第 ${game.round} 轮 · 等级 ${game.level} · 金币 ${player.coin}</div>
       ${extraLine}
     </div>
@@ -4483,6 +4561,7 @@ function onGameVictory() {
       <button id="homeBtn">回到首页</button>
       <button id="endlessBtn">无尽模式</button>
     </div>
+    <div style="font-size:clamp(9px,2vmin,11px); opacity:0.55; text-align:center; margin-top:6px">（仅能解锁无尽模式成就）</div>
     <div style="display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:12px">
       <a href="https://v.wjx.cn/vm/r0UUnQT.aspx#" target="_blank" rel="noreferrer"
          style="display:inline-block; padding:8px 16px; border:1px solid #6cf; border-radius:4px; color:#dff4ff; text-decoration:none; background:rgba(25,35,52,.88); box-shadow:0 0 14px rgba(102,200,255,.18);">向作者反馈</a>
@@ -4714,6 +4793,23 @@ function update(dt) {
   }
 
   for (const e of enemies) updateEnemy(e, dt);
+  // 色欲 (挑战模式): 敌机也被玩家吸引 (180px 内, 280 加速度; 是敌弹半径的两倍)
+  if (game.challengeMode && game.activeCurses.has('lust')) {
+    for (const e of enemies) {
+      if (e.dead || e.boss || e.warningT > 0) continue;
+      const dx = player.x - e.x, dy = player.y - e.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 0 && d < 180) {
+        const acc = 280;
+        const ddx = (dx / d) * acc * dt * dt;
+        const ddy = (dy / d) * acc * dt * dt;
+        e.x += ddx;
+        e.y += ddy;
+        // bx 用于 zigzag 摆动基线, 同步偏移
+        if (e.bx !== undefined) e.bx += ddx;
+      }
+    }
+  }
   for (const b of bullets) updateBullet(b, dt);
   updateShockwaves(dt);
   updateMissileFlashes(dt);
@@ -4896,9 +4992,10 @@ function update(dt) {
           floats.push({ x: player.x, y: player.y - 14, t: 0.9, life: 0.9, txt: '+' + heal + ' HP', color: '#7f7', size: 16 });
         }
       } else if (game.state !== 'collecting' && !c.lucky && game.activeCurses.has('greed')) {
-        // 贪婪: 主动拾取扣钱; 收集阶段 / 幸运金币视同自动拾取, 不扣钱
-        if (game.runStats) game.runStats.greedCoinLost += c.v;
-        player.coin = Math.max(0, player.coin - c.v);
+        // 贪婪: 主动拾取扣钱; 收集阶段 / 幸运金币视同自动拾取, 不扣钱. 挑战模式下扣 2 金
+        const lose = c.v * (game.challengeMode ? 2 : 1);
+        if (game.runStats) game.runStats.greedCoinLost += lose;
+        player.coin = Math.max(0, player.coin - lose);
       } else {
         player.coin += c.v;
       }
@@ -5653,6 +5750,7 @@ function updateUI() {
   lines.push(`移速 ${Number.isFinite(player.moveSpeed) ? Math.round(player.moveSpeed) : '∞'}`);
   lines.push(`暴击 ${(player.critRate*100).toFixed(0)}%`);
   lines.push(`暴伤 ×${player.critDmg.toFixed(2)}`);
+  lines.push(`弹体 ×${player.bulletSize.toFixed(2)}`);
   if (player.projectiles > 1) lines.push(`<span class="extra">弹道 ${player.projectiles}</span>`);
   if (player.cyclops) lines.push(`<span class="extra">穿透 ∞</span>`);
   else if (player.pierce > 0) lines.push(`<span class="extra">穿透 ${player.pierce}</span>`);
