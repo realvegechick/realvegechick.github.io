@@ -426,9 +426,6 @@
     opacity: 0.92;
     letter-spacing: 1px;
   }
-  .start-mode-row button {
-    min-width: clamp(180px, 42vmin, 230px);
-  }
   #startBtn:hover {
     background: linear-gradient(180deg, rgba(55, 98, 145, 0.96), rgba(26, 54, 88, 0.96));
     border-color: rgba(175, 220, 255, 0.9);
@@ -524,6 +521,28 @@
   .history-item .h-result.win { color: #ffd06a; }
   .history-item .h-result.lose { color: #ff8a8a; }
   .history-empty { opacity: 0.6; font-size: clamp(11px, 2.4vmin, 13px); margin-top: 20px; }
+
+  /* 开始界面: 三个模式按钮统一大小 */
+  .start-mode-btn {
+    padding: clamp(10px, 2.5vmin, 14px) 0;
+    font-size: clamp(14px, 3vmin, 16px);
+    width: clamp(180px, 42vmin, 230px);
+  }
+  .start-mode-btn.challenge-btn {
+    background: linear-gradient(180deg, rgba(120, 50, 50, 0.96), rgba(70, 20, 20, 0.96));
+    border-color: rgba(255, 140, 140, 0.8);
+    color: #ffe2e2;
+  }
+  .start-mode-btn.challenge-btn:hover {
+    background: linear-gradient(180deg, rgba(150, 70, 70, 0.96), rgba(95, 30, 30, 0.96));
+    border-color: rgba(255, 180, 180, 0.95);
+  }
+  /* 成就 / 历史记录按钮 */
+  .start-meta-btn {
+    padding: clamp(8px, 2vmin, 12px) 0;
+    font-size: clamp(12px, 2.6vmin, 14px);
+    width: clamp(130px, 30vmin, 170px);
+  }
 </style>
 </head>
 <body>
@@ -1479,19 +1498,17 @@ function showStartScreen() {
       <div class="start-kicker">GEOMETRIC AIR COMBAT</div>
       <div class="start-title">几何空战</div>
       <div class="start-mode-row">
-        <button id="easyBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">简单模式</button>
-                    <div class="start-mode-note">4血4盾，降低敌人弹速，无诅咒、无负面代价</div>
-                    <div class="start-mode-note" style="opacity:0.55">（简单模式下无法解锁成就）</div>
-        <button id="startBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px);">普通模式</button>
-        <button id="challengeBtn" style="padding: clamp(10px, 2.5vmin, 14px) clamp(30px, 7vmin, 46px); font-size: clamp(14px, 3vmin, 16px); background: linear-gradient(180deg, rgba(120, 50, 50, 0.96), rgba(70, 20, 20, 0.96)); border-color: rgba(255, 140, 140, 0.8); color: #ffe2e2;">挑战模式</button>
-        <div class="start-mode-note">敌人提速 / 诅咒强化 / 不可净化诅咒</div>
+        <button id="easyBtn" class="start-mode-btn">简单模式</button>
+        <div class="start-mode-note" style="opacity:0.55">（简单模式下无法解锁成就）</div>
+        <button id="startBtn" class="start-mode-btn">普通模式</button>
+        <button id="challengeBtn" class="start-mode-btn challenge-btn">挑战模式</button>
         <label class="start-mode-note" style="display:flex; align-items:center; gap:8px; justify-content:center; margin-top:6px">
           <input type="checkbox" id="inertiaBodyChk" />
           <span>物理模拟（飞机物理摆动并影响发射偏角）</span>
         </label>
         <div style="display:flex; gap:10px; justify-content:center; margin-top:14px">
-          <button id="achievementsBtn" style="padding: 8px 18px; font-size: clamp(11px, 2.4vmin, 13px);">🏆 成就 ${saveState.unlocked.size}/${ACHIEVEMENTS.length}</button>
-          <button id="historyBtn" style="padding: 8px 18px; font-size: clamp(11px, 2.4vmin, 13px);">📜 历史记录</button>
+          <button id="achievementsBtn" class="start-meta-btn">🏆 成就 ${saveState.unlocked.size}/${ACHIEVEMENTS.length}</button>
+          <button id="historyBtn" class="start-meta-btn">📜 历史记录</button>
         </div>
       </div>
     </div>`;
@@ -5746,11 +5763,11 @@ function updateUI() {
   const lines = [];
   lines.push(`攻击 ${player.atk.toFixed(1)}`);
   lines.push(`射速 ${player.fireRate.toFixed(2)}/s`);
+  lines.push(`弹体 ×${player.bulletSize.toFixed(2)}`);
   lines.push(`弹速 ${Math.round(player.bulletSpeed)}`);
   lines.push(`移速 ${Number.isFinite(player.moveSpeed) ? Math.round(player.moveSpeed) : '∞'}`);
   lines.push(`暴击 ${(player.critRate*100).toFixed(0)}%`);
   lines.push(`暴伤 ×${player.critDmg.toFixed(2)}`);
-  lines.push(`弹体 ×${player.bulletSize.toFixed(2)}`);
   if (player.projectiles > 1) lines.push(`<span class="extra">弹道 ${player.projectiles}</span>`);
   if (player.cyclops) lines.push(`<span class="extra">穿透 ∞</span>`);
   else if (player.pierce > 0) lines.push(`<span class="extra">穿透 ${player.pierce}</span>`);
