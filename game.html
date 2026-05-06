@@ -3883,7 +3883,7 @@ function collideKillBoss(b) {
 
 // 火焰附加: 给敌人叠加 n 层燃烧 (默认无衰减, 每 0.5 秒每层 1 dmg)
 // 镜像分身免疫. 原初火焰: 燃烧 tick 额外造成最大生命百分比伤害, 但触发频率减半
-// 燃烧基础节拍, 实际节拍 = BURN_TICK / sqrt(stacks) — 层数越多触发越快
+// 燃烧基础节拍, 实际节拍 = BURN_TICK / ln(stacks + e) — 层数越多触发越快 (对数, 比根号更克制)
 const BURN_TICK = 0.5;
 function applyBurn(e, n) {
   if (!e || e.dead || e.type === 'mirror') return;
@@ -3900,12 +3900,12 @@ function applyBurn(e, n) {
   }
 }
 // 每帧给所有有燃烧层数的敌人累加计时, 满 interval 秒结算一次伤害 = 层数.
-// interval = BURN_TICK / sqrt(stacks). 层数越多触发越频繁.
+// interval = BURN_TICK / ln(stacks + e). 层数越多触发越频繁, 对数增长比根号更克制.
 function tickBurns(dt) {
   for (const e of enemies) {
     if (!e.burn || e.dead) continue;
     e.burnTickT += dt;
-    const interval = (BURN_TICK / Math.sqrt(Math.max(1, e.burn))) * (player.primalFire ? 2 : 1);
+    const interval = (BURN_TICK / Math.log(Math.max(1, e.burn) + Math.E)) * (player.primalFire ? 2 : 1);
     while (e.burnTickT >= interval) {
       e.burnTickT -= interval;
       if (e.invuln === true || e.invuln > 0 || e.warningT > 0) continue;
