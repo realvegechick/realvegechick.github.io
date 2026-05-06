@@ -948,7 +948,9 @@ const ENEMY_THREAT = {
 };
 
 function gapForThreat(threat) {
-  return 0.4 + threat * 0.18;
+  const base = 0.4 + threat * 0.18;
+  // 挑战模式: 敌人生成间隔减半
+  return game.challengeMode ? base * 0.5 : base;
 }
 
 function clearBurn(e) {
@@ -975,15 +977,22 @@ function comboTypeCount(round) {
 }
 
 // 七宗罪诅咒: 仅当局生效, 散落到各处的检查点应用
+// descChallenge: 挑战模式下使用的描述 (若未提供则与 desc 一致)
 const CURSES = [
-  { id:'sloth',    n:'懒惰', desc:'弹速 -50%；移速 -50%' },
-  { id:'gluttony', n:'暴食', desc:'飞机体型 ×1.5' },
-  { id:'pride',    n:'傲慢', desc:'取消受击无敌时间' },
-  { id:'wrath',    n:'愤怒', desc:'受伤翻倍' },
-  { id:'greed',    n:'贪婪', desc:'吸金范围 ×2；主动拾取改为扣金币；飞出屏幕的金币会入账' },
-  { id:'lust',     n:'色欲', desc:'敌弹略微被玩家吸引' },
+  { id:'sloth',    n:'懒惰', desc:'弹速 -50%；移速 -50%', descChallenge:'弹速 -60%；移速 -60%' },
+  { id:'gluttony', n:'暴食', desc:'飞机体型 ×1.5', descChallenge:'飞机体型 ×2' },
+  { id:'pride',    n:'傲慢', desc:'取消受击无敌时间', descChallenge:'取消受击无敌与所有受击效果' },
+  { id:'wrath',    n:'愤怒', desc:'受到双倍伤害' },
+  { id:'greed',    n:'贪婪', desc:'吸金范围 ×2；主动拾取改为扣金币；飞出屏幕的金币会入账',
+                              descChallenge:'吸金范围 ×2；主动拾取改为扣双倍金币；飞出屏幕的金币会入账' },
+  { id:'lust',     n:'色欲', desc:'敌弹被玩家吸引', descChallenge:'敌弹与敌人都被玩家吸引' },
   { id:'envy',     n:'嫉妒', desc:'消灭所有敌人后, 召唤一个镜像, 继承你的主要战斗属性' },
 ];
+
+function curseDesc(curse) {
+  if (!curse) return '';
+  return (game.challengeMode && curse.descChallenge) ? curse.descChallenge : curse.desc;
+}
 
 // 经验需求随等级线性增加: 5, 7, 9, 11...
 function expNeeded(level) { return 5 + (level - 1) * 2; }
@@ -1098,8 +1107,9 @@ function recompute() {
   if (player.bulletParry && !game.easyMode) { player.maxShield = 0; player.shield = 0; }
   // 当前激活诅咒的实时效果 (单/多张, 每波刷新)
   if (game.activeCurses.has('sloth')) {
-    player.bulletSpeed *= 0.5;
-    player.moveSpeed *= 0.5;
+    const factor = game.challengeMode ? 0.4 : 0.5;
+    player.bulletSpeed *= factor;
+    player.moveSpeed *= factor;
   }
   // 体型派生: 巨人形态 ×1.5, 暴食诅咒 ×1.5 (挑战模式 ×2)
   let r = 13;
@@ -1763,7 +1773,8 @@ function drawCurse(exclude) {
 // round >= 6 或玩家拥有恶魔之力时抽诅咒, 恶魔之力时抽 2 张不同 id (池子不足则只抽 1)
 function getMaybeCurseCard() {
   if (game.easyMode) return null;
-  if (game.round < 6 && !player.devilPower) return null;
+  // 挑战模式: 第 1 轮起就有诅咒. 普通模式: 第 6 轮起或玩家拥有诅咒之力
+  if (!game.challengeMode && game.round < 6 && !player.devilPower) return null;
   const first = drawCurse();
   if (!first) {
     // 需要诅咒但已全部被除厄时, 在同位置保留提示
@@ -1776,7 +1787,9 @@ function getMaybeCurseCard() {
     };
   }
   const ids = [first];
-  if (player.devilPower) {
+  // 第二张: 玩家有诅咒之力时, 或挑战模式第 6 轮起
+  const wantsSecond = player.devilPower || (game.challengeMode && game.round >= 6);
+  if (wantsSecond) {
     const second = drawCurse(first);
     if (second) ids.push(second);
   }
@@ -1786,7 +1799,7 @@ function getMaybeCurseCard() {
       <div class="card curse-card">
         <div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">☠</div>
         <div class="nm" style="color:#ff7777">${curse.n}</div>
-        <div class="ds"><div class="b">${curse.desc}</div></div>
+        <div class="ds"><div class="b">${curseDesc(curse)}</div></div>
       </div>`;
   }).join('');
   let particles = '';
@@ -2119,6 +2132,7 @@ function spawnMirrorEnemy() {
     invuln: 2.0,            // 出场无敌 2 秒 (类似 boss 入场)
     spawnInvulnT: 2.0,      // 入场无敌计时, 期间画金色光环
     invulnT: 0.6,           // 受击后无敌时间, 与玩家一致
+    mvx: 0, mvy: 0,         // 挑战模式镜像速度向量 (加速度限制)
     shieldDelay: 0,
     shieldRegenDelayBase: player.shieldRegenDelayBase,
     shieldRegenInterval: player.shieldRegenInterval,
@@ -2132,24 +2146,14 @@ function spawnMirrorEnemy() {
 }
 
 function mirrorFire(e) {
+  const aim = Math.atan2(player.y - e.y, player.x - e.x);
   const n = e.projectiles;
   const spread = e.spread ?? 0.16;
   const total = spread * (n - 1);
   const sp = e.bulletSpeed || 360;
-  let baseAim, spreadSign;
-  if (game.challengeMode) {
-    // 挑战模式: 玩家向上发射, 镜像向下发射. 物理模拟下二者左右对称
-    // 玩家 baseAim = -π/2 + aimRot. 关于 y=H/2 镜像 → 反 y 分量 → 角度取相反数 → π/2 - aimRot
-    const aimRot = game.inertiaBody ? player.aimRot : 0;
-    baseAim = Math.PI / 2 - aimRot;
-    spreadSign = -1; // 扩散方向也对称
-  } else {
-    baseAim = Math.atan2(player.y - e.y, player.x - e.x);
-    spreadSign = 1;
-  }
   for (let i = 0; i < n; i++) {
     const t = n === 1 ? 0 : (i / (n - 1) - 0.5);
-    const a = baseAim + spreadSign * t * total;
+    const a = aim + t * total;
     // 镜像子弹继承玩家穿透 → 在 parry 抵消时按相同规则消耗 pierce
     bullets.push({
       x: e.x, y: e.y,
@@ -2180,9 +2184,37 @@ function updateMirror(e, dt) {
     }
   }
   if (game.challengeMode) {
-    // 挑战模式: 镜像位置永远关于屏幕横向中线对称 (与玩家对称)
-    e.x = player.x;
-    e.y = H - player.y;
+    // 挑战模式: 朝玩家关于 y=H/2 的对称点移动, 最大速度 = e.moveSpeed, 加速度有限 (允许玩家通过急转向拉开偏差)
+    const tx = player.x, ty = H - player.y;
+    const dx = tx - e.x, dy = ty - e.y;
+    const d = Math.hypot(dx, dy);
+    const vmax = e.moveSpeed || 350;
+    // 期望速度: 朝目标点, 大小为 vmax (距离很近时按距离/dt 取较小值, 避免过冲)
+    let dvx, dvy;
+    if (d < 1e-3) {
+      dvx = 0; dvy = 0;
+    } else {
+      const desiredMag = Math.min(vmax, d / Math.max(dt, 1e-3));
+      dvx = (dx / d) * desiredMag;
+      dvy = (dy / d) * desiredMag;
+    }
+    // 加速度上限: 2 × vmax 像素/秒² (≈ 0.5s 从静止到满速)
+    const accelMax = vmax * 2 * dt;
+    const ddvx = dvx - e.mvx, ddvy = dvy - e.mvy;
+    const ddmag = Math.hypot(ddvx, ddvy);
+    if (ddmag <= accelMax) {
+      e.mvx = dvx; e.mvy = dvy;
+    } else {
+      e.mvx += (ddvx / ddmag) * accelMax;
+      e.mvy += (ddvy / ddmag) * accelMax;
+    }
+    e.x += e.mvx * dt;
+    e.y += e.mvy * dt;
+    // 边界反射 (碰墙清掉对应分量速度)
+    if (e.x < e.r) { e.x = e.r; e.mvx = 0; }
+    if (e.x > W - e.r) { e.x = W - e.r; e.mvx = 0; }
+    if (e.y < e.r) { e.y = e.r; e.mvy = 0; }
+    if (e.y > H - e.r) { e.y = H - e.r; e.mvy = 0; }
   } else {
     // 维持 200px 距离的简单 AI
     const dx = player.x - e.x, dy = player.y - e.y;
@@ -2271,7 +2303,7 @@ function updateEnemy(e, dt) {
       if (e.type === 'interceptor') {
         const dx = e.aimX - e.x, dy = e.aimY - e.y;
         const d = Math.hypot(dx, dy) || 1;
-        const speed = 380;
+        const speed = 380 * (game.challengeMode ? 1.2 : 1);
         e.vx = (dx / d) * speed;
         e.vy = (dy / d) * speed;
       }
@@ -2395,7 +2427,7 @@ function updateEnemy(e, dt) {
       e.x = rand(80, W - 80);
       e.y = H - 10;
       e.warningT = 0.8;
-      e.vy = -rand(60, 90);
+      e.vy = -rand(60, 90) * (game.challengeMode ? 1.2 : 1);
       e.t = 0;
       clearBurn(e);
     }
@@ -3100,7 +3132,7 @@ function missileImpact(b, direct) {
 
 function spawnEnemyBullet(x, y, a, sp, dmg) {
   if (game.easyMode) sp *= 0.8;
-  if (game.challengeMode) sp *= 1.1;
+  if (game.challengeMode) sp *= 1.2;
   bullets.push({ x, y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp, r: 5, dmg, from:'enemy' });
 }
 
@@ -3662,7 +3694,7 @@ const LEVEL_OPTIONS = [
     desc: () => {
       const cur = player.evade;
       const nxt = Math.min(0.80, cur + 0.06);
-      return `受击时 +6% 概率闪避（上限 80%）   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
+      return `+6% 受击闪避概率（上限 80%）   ${(cur*100).toFixed(0)}% → ${(nxt*100).toFixed(0)}%`;
     },
     apply: () => { player.evade = Math.min(0.80, player.evade + 0.06); } },
   { n:'弹体大小', icon:'●',
@@ -3762,7 +3794,7 @@ const SHOP_ITEMS = [
       p.shield = Math.max(0, p.maxShield);
     } },
   { n:'闪避装置', ico:'▣', cost:33,
-    good:['受击时 +8% 概率闪避（上限 80%）'], bad:[],
+    good:['+8% 受击闪避概率（上限 80%）'], bad:[],
     apply: p => { p.evade = Math.min(0.80, p.evade + 0.08); } },
   { n:'暴击核心', ico:'✸', cost:40,
     good:['暴击率 +10%', '暴击伤害 +30%'], bad:[],
@@ -4029,7 +4061,7 @@ function openCursePurifyChoice() {
   remaining.forEach(c => {
     const el = document.createElement('div');
     el.className = 'card';
-    el.innerHTML = `<div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">☠</div><div class="nm" style="color:#ff9090">${c.n}</div><div class="ds"><div class="b">${c.desc}</div></div>`;
+    el.innerHTML = `<div class="ico" style="color:#ff7777; font-size:clamp(20px,5vmin,28px); margin-bottom:6px">☠</div><div class="nm" style="color:#ff9090">${c.n}</div><div class="ds"><div class="b">${curseDesc(c)}</div></div>`;
     el.onclick = () => {
       player.bannedCurses.add(c.id);
       if (player.bannedCurses.size >= CURSES.length) tryUnlock('pureHeart');
@@ -4810,10 +4842,10 @@ function update(dt) {
   }
 
   for (const e of enemies) updateEnemy(e, dt);
-  // 色欲 (挑战模式): 敌机也被玩家吸引 (180px 内, 280 加速度; 是敌弹半径的两倍)
+  // 色欲 (挑战模式): 敌机也被玩家吸引 (180px 内, 280 加速度; 是敌弹半径的两倍). boss 与 镜像不受影响
   if (game.challengeMode && game.activeCurses.has('lust')) {
     for (const e of enemies) {
-      if (e.dead || e.boss || e.warningT > 0) continue;
+      if (e.dead || e.boss || e.type === 'mirror' || e.warningT > 0) continue;
       const dx = player.x - e.x, dy = player.y - e.y;
       const d = Math.hypot(dx, dy);
       if (d > 0 && d < 180) {
