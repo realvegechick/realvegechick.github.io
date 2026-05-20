@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>🐷 小猪快跑</title>
+<style>
+  :root {
+    /* 单元格边长：随屏幕自适应，地图固定 30 列 × 15 行 */
+    --cs: clamp(13px, min(3vw, 4.8vh), 28px);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #1c1c22;
+    color: #e8e8ee;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 14px 10px 24px;
+    gap: 10px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 24px;
+    color: #ff9ab5;
+    letter-spacing: 2px;
+  }
+  #levelInfo {
+    font-size: 15px;
+    color: #ffd9a0;
+    font-weight: bold;
+  }
+  /* 地图网格 */
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(30, var(--cs));
+    grid-template-rows: repeat(15, var(--cs));
+    background: #14141a;
+    border: 3px solid #3a3a45;
+    border-radius: 8px;
+    padding: 4px;
+  }
+  .cell {
+    width: var(--cs);
+    height: var(--cs);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: calc(var(--cs) * 0.72);
+    line-height: 1;
+    user-select: none;
+  }
+  .wall      { background: #4a4a52; color: #6f6f78; }
+  .win       { color: #2ecc55; font-weight: bold; }
+  .touch     { color: #ffd400; font-weight: bold; }
+  .spin      { color: #3fd8d8; font-weight: bold; }
+  .spike     { background: #c0392b; color: #161616; font-weight: bold; }
+  .pit       { background: #1d3fae; color: #9aa6d8; }
+  .hero      { color: #ffd400; font-weight: bold; }
+  .hero-end  { background: #ff5b5b; color: #ffd400; font-weight: bold; }
+  .hero-spike{ background: #ff5b5b; color: #ffd400; font-weight: bold; }
+  .hero-pit  { background: #5b6bff; color: #ffd400; font-weight: bold; }
+
+  /* 消息区 */
+  #msg {
+    min-height: 22px;
+    font-size: 15px;
+    font-weight: bold;
+    color: #ffd9a0;
+    text-align: center;
+  }
+  #msg.bad  { color: #ff7a7a; }
+  #msg.good { color: #7bff9a; }
+  #hintBar {
+    font-size: 12px;
+    color: #888;
+  }
+
+  /* 控制区 */
+  #controls {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(2, 52px);
+    gap: 6px;
+  }
+  .row {
+    display: flex;
+    gap: 8px;
+  }
+  button {
+    font-family: inherit;
+    border: none;
+    border-radius: 9px;
+    background: #3a3a48;
+    color: #e8e8ee;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background .08s, transform .05s;
+  }
+  button:hover   { background: #4a4a5c; }
+  button:active  { background: #ff9ab5; color: #1c1c22; transform: scale(0.94); }
+  .pad button { width: 52px; height: 52px; font-size: 20px; }
+  .pad .up { grid-column: 2; grid-row: 1; }
+  .pad .left { grid-column: 1; grid-row: 2; }
+  .pad .down { grid-column: 2; grid-row: 2; }
+  .pad .right { grid-column: 3; grid-row: 2; }
+  .row button { padding: 9px 16px; font-size: 14px; }
+  #continueBtn {
+    background: #2ecc55;
+    color: #14141a;
+    padding: 11px 26px;
+    font-size: 16px;
+  }
+  #continueBtn:hover { background: #43dd6a; }
+</style>
+</head>
+<body>
+  <h1>🐷 小猪快跑</h1>
+  <div id="levelInfo">第 1/13 关</div>
+  <div id="grid"></div>
+  <div id="msg"></div>
+  <div id="hintBar">WASD / 方向键 移动 · R 重来本关</div>
+
+  <div id="controls">
+    <div class="pad">
+      <button class="up"    tabindex="-1" data-key="w">↑</button>
+      <button class="left"  tabindex="-1" data-key="a">←</button>
+      <button class="down"  tabindex="-1" data-key="s">↓</button>
+      <button class="right" tabindex="-1" data-key="d">→</button>
+    </div>
+    <div class="row">
+      <button tabindex="-1" data-key="r">重来本关 (R)</button>
+      <button tabindex="-1" id="restartBtn">重新开始</button>
+    </div>
+    <button id="continueBtn" tabindex="-1" data-key="enter" style="display:none">继续 ⏎</button>
+  </div>
+
+<script>
+// ===== 关卡数据（由 小猪快跑.py 精确提取）=====
+const DATA = {"levels": ["墙墙墙墙墙墙墙墙\n墙麦          墙\n墙            墙\n墙            墙\n墙            墙\n墙          赢墙\n墙墙墙墙墙墙墙墙", "墙墙墙墙墙墙墙墙\n墙麦          墙\n墙            墙\n墙  转        墙\n墙            墙\n墙        墙赢墙\n墙墙墙墙墙墙墙墙", "墙墙墙墙墙墙墙墙墙\n墙转          转墙\n墙      墙      墙\n墙麦    墙赢    墙 \n墙  墙墙墙墙墙  墙\n墙      墙      墙\n墙      墙      墙\n墙转          转墙\n墙墙墙墙墙墙墙墙墙墙", "墙墙墙墙墙墙墙墙墙\n墙转      麦    墙\n墙  墙墙墙墙墙墙墙\n墙  墙转      转墙\n墙  墙  墙墙墙  墙\n墙  墙赢墙墙墙  墙\n墙  墙墙墙墙墙  墙\n墙转          转墙\n墙墙墙墙墙墙墙墙墙", "墙墙墙墙墙墙墙\n墙麦        墙\n墙          墙\n墙    转    墙\n墙墙墙墙墙墙墙\n墙墙墙墙墙墙墙\n                赢", "墙墙墙墙墙墙墙墙墙墙墙墙\n墙麦            转转转墙\n墙                    墙\n墙                    墙\n墙转转转              墙\n墙墙墙墙墙墙墙墙墙墙墙墙\n墙墙墙墙墙墙墙墙墙墙墙墙\n墙                  赢墙\n墙墙墙墙墙墙墙墙墙墙墙墙", "墙墙墙墙墙      墙墙墙墙墙\n墙赢转  墙墙    墙麦    墙\n墙        墙墙墙墙      墙\n墙墙                    墙\n  墙      墙墙墙墙      墙\n  墙墙墙  墙墙墙墙  转  墙\n      墙  墙      墙墙墙墙\n      墙  墙      墙  墙\n      墙  墙      墙  墙\n      墙  墙  墙  墙  墙\n      墙      墙      墙\n      墙      墙      墙\n      墙      墙      墙\n      墙墙墙墙墙墙墙墙墙", "刺刺刺刺刺刺刺刺\n刺            刺\n刺麦      转  刺\n刺            刺\n刺  刺刺刺刺刺刺刺\n刺              刺\n刺      刺      刺\n刺  转  刺      刺\n刺      刺  赢  刺\n刺刺刺刺刺刺刺刺刺", "刺刺刺刺刺刺刺\n刺麦        刺\n刺          刺\n刺          刺\n刺  转      刺\n刺刺墙刺刺刺刺\n  刺  刺刺赢刺\n  刺  刺刺  刺\n  刺  刺刺  刺\n  刺转    转刺\n  刺刺刺刺刺刺", "刺刺刺刺刺刺刺刺刺\n刺麦    刺      刺\n刺      转转    刺\n刺      转转    刺\n刺          刺赢刺\n刺刺刺刺刺刺刺刺刺", "墙墙墙墙墙墙墙墙\n墙麦          墙          \n墙坑坑坑      墙          \n墙转          墙      \n墙坑坑坑坑坑坑墙    \n墙          赢墙\n墙墙墙墙墙墙墙墙", "墙墙墙墙墙墙墙墙\n墙麦    坑赢坑墙          \n墙      坑坑坑墙          \n墙      坑坑坑墙      \n墙      转坑坑墙    \n墙      转坑坑墙\n墙墙墙墙墙墙墙墙", "墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙\n墙摸墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙\n墙  墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙墙\n墙  墙墙墙墙墙墙墙墙墙  墙墙转坑墙转      转墙墙墙\n墙  墙墙墙墙转    转墙  墙墙坑墙墙  墙墙墙  墙墙墙\n墙  墙墙墙墙  墙墙转墙墙转墙  墙墙  墙墙墙  墙墙墙\n墙  墙墙墙墙  墙墙  墙墙      墙墙转麦    转墙墙墙\n墙  墙墙墙墙  墙墙  墙墙      墙墙  墙墙墙墙墙墙墙\n墙        墙转    转墙墙      墙墙          墙墙墙\n墙坑坑坑坑坑坑墙墙墙墙墙墙  墙墙墙墙墙墙墙墙墙墙墙"], "hints": ["麦小猪冲冲冲鸭！！！", "麦小猪开始旋转！！！", "麦小猪晕头转向！！！", "麦小猪蜿蜒前行！！！", "麦小猪破墙而出！！！", "麦小猪势不可挡！！！", "麦小猪舍近求远！！！", "麦小猪小心尖刺！！！", "麦小猪辗转腾挪！！！", "麦小猪开动脑筋！！！", "麦小猪路遇不平！！！", "麦小猪注意脚下！！！", "麦小猪陷入爱河！！！"]};
+const levels = DATA.levels;
+const hints  = DATA.hints;
+
+const WIDTH = 30, HEIGHT = 15;
+
+// ===== 游戏状态 =====
+const game = {
+  originalName: "麦小猪",
+  name: "麦小猪",
+  level: 0,
+  x: 0, y: 0,
+  isVertical: false,
+  end: false,
+  mapData: [],
+  mode: 'playing',   // playing | dead | wonLevel | gameOver
+  msg: '',
+  deathMsg: '',
+  endMsg: '',
+};
+
+// ===== 地图加载（复刻 Python load_map）=====
+// 中文字符占 1 格，源文件里的 2 个空格对齐 1 格
+function loadMap(levelStr) {
+  game.isVertical = false;
+  game.name = game.originalName;
+  const mapData = [ new Array(WIDTH).fill("") ];
+  const lines = levelStr.split("\n");
+  for (const line of lines) {
+    const row = [""];
+    let idx = 0;
+    while (idx < line.length) {
+      const ch = line[idx];
+      if (ch === "麦") {
+        row.push("");
+        game.x = row.length - 1;
+        game.y = mapData.length;
+        idx += 1;
+      } else if (ch === " ") {
+        row.push("");
+        idx += 2;            // 2 个空格 = 1 个空白单元
+      } else {
+        row.push(ch);
+        idx += 1;
+      }
+    }
+    while (row.length < WIDTH) row.push("");
+    mapData.push(row.slice(0, WIDTH));
+    if (mapData.length === HEIGHT) break;
+  }
+  while (mapData.length < HEIGHT) mapData.push(new Array(WIDTH).fill(""));
+  game.mapData = mapData;
+}
+
+// 检测以 (ny,nx) 为锚点的 3 格区域内是否有 target（越界也算撞）
+function checkCollision(ny, nx, target) {
+  if (game.isVertical) {
+    for (let dy = 0; dy < 3; dy++) {
+      if (ny+dy < 0 || ny+dy >= HEIGHT || nx < 0 || nx >= WIDTH) return true;
+      if (game.mapData[ny+dy][nx] === target) return true;
+    }
+  } else {
+    for (let dx = 0; dx < 3; dx++) {
+      if (nx+dx < 0 || nx+dx >= WIDTH || ny < 0 || ny >= HEIGHT) return true;
+      if (game.mapData[ny][nx+dx] === target) return true;
+    }
+  }
+  return false;
+}
+
+// 检测 3 格区域是否「全部」是 target（用于判定掉坑摔死）
+function checkCover(ny, nx, target) {
+  if (game.isVertical) {
+    for (let dy = 0; dy < 3; dy++) {
+      if (ny+dy < 0 || ny+dy >= HEIGHT || nx < 0 || nx >= WIDTH) return false;
+      if (game.mapData[ny+dy][nx] !== target) return false;
+    }
+  } else {
+    for (let dx = 0; dx < 3; dx++) {
+      if (nx+dx < 0 || nx+dx >= WIDTH || ny < 0 || ny >= HEIGHT) return false;
+      if (game.mapData[ny][nx+dx] !== target) return false;
+    }
+  }
+  return true;
+}
+
+// 旋转时清除小猪占位处的墙
+function removeObstacles() {
+  for (let d = 0; d < 3; d++) {
+    const yy = game.isVertical ? game.y + d : game.y;
+    const xx = game.isVertical ? game.x : game.x + d;
+    if (yy >= 0 && yy < HEIGHT && xx >= 0 && xx < WIDTH && game.mapData[yy][xx] === "墙") {
+      game.mapData[yy][xx] = "";
+    }
+  }
+}
+
+// ===== 过关 =====
+function winLevel(isTouch) {
+  game.level += 1;
+  if (isTouch) {
+    game.name = "摸♥歪";
+    game.end = true;
+  }
+  if (game.level >= levels.length) {
+    game.mode = 'gameOver';
+    game.endMsg = isTouch ? "从此，两头小猪过上了幸福的生活！"
+                          : "恭喜通关！你真是一只聪明的小猪！";
+  } else {
+    game.mode = 'wonLevel';
+  }
+}
+
+// ===== 走一步（复刻 Python 主循环里一次按键的处理）=====
+function step(key) {
+  let ny = game.y, nx = game.x;
+  if      (key === 'w') ny = game.y - 1;
+  else if (key === 's') ny = game.y + 1;
+  else if (key === 'a') nx = game.x - 1;
+  else if (key === 'd') nx = game.x + 1;
+  else return;
+
+  // 临时消息默认为本关提示语，被事件覆盖后只活一帧
+  game.msg = hints[game.level];
+
+  if (checkCollision(ny, nx, "墙")) {
+    game.msg = "撞到墙了，痛痛QAQ";
+  } else if (checkCollision(ny, nx, "刺")) {
+    game.msg = "麦小猪才不往刺上撞！";
+  } else if (checkCollision(game.y, game.x, "坑") === false && checkCollision(ny, nx, "坑")) {
+    game.msg = "麦小猪才不往坑里跳！";
+  } else {
+    game.y = ny;
+    game.x = nx;
+  }
+
+  // 吃到「转」道具：横躺 ⇄ 竖立
+  if (checkCollision(game.y, game.x, "转")) {
+    game.msg = "麦小猪转起来啦！";
+    if (!game.isVertical) {
+      if (game.mapData[game.y][game.x] === "转") {
+        game.mapData[game.y][game.x] = "";
+      } else if (game.mapData[game.y][game.x+1] === "转") {
+        game.mapData[game.y][game.x+1] = "";
+        game.y -= 1; game.x += 1;
+      } else if (game.mapData[game.y][game.x+2] === "转") {
+        game.mapData[game.y][game.x+2] = "";
+        game.y -= 2; game.x += 2;
+      }
+    } else {
+      game.name = game.name.split("").reverse().join("");
+      if (game.mapData[game.y][game.x] === "转") {
+        game.mapData[game.y][game.x] = "";
+        game.x -= 2;
+      } else if (game.mapData[game.y+1][game.x] === "转") {
+        game.mapData[game.y+1][game.x] = "";
+        game.y += 1; game.x -= 1;
+      } else if (game.mapData[game.y+2][game.x] === "转") {
+        game.mapData[game.y+2][game.x] = "";
+        game.y += 2;
+      }
+    }
+    game.isVertical = !game.isVertical;
+    removeObstacles();
+  }
+
+  // 过关判定
+  if (checkCollision(game.y, game.x, "赢")) { winLevel(false); return; }
+  if (checkCollision(game.y, game.x, "摸")) { winLevel(true);  return; }
+
+  // 死亡判定（Python 在下一帧循环开头处理）
+  if (checkCollision(game.y, game.x, "刺")) {
+    game.mode = 'dead';
+    game.deathMsg = "呜呜呜麦小猪被刺扎鼠了";
+    return;
+  }
+  if (checkCover(game.y, game.x, "坑")) {
+    game.mode = 'dead';
+    game.deathMsg = "呜呜呜麦小猪掉进坑里摔鼠了";
+    return;
+  }
+}
+
+// ===== 渲染 =====
+const gridEl   = document.getElementById('grid');
+const levelEl  = document.getElementById('levelInfo');
+const msgEl    = document.getElementById('msg');
+const continueBtn = document.getElementById('continueBtn');
+
+function render() {
+  // 关卡号：过关 / 通关画面显示的是刚通过的那一关
+  const shownLevel = (game.mode === 'wonLevel' || game.mode === 'gameOver')
+    ? game.level : game.level + 1;
+  levelEl.textContent = `第 ${shownLevel}/${levels.length} 关`;
+
+  // 画地图
+  let html = '';
+  for (let i = 0; i < HEIGHT; i++) {
+    for (let j = 0; j < WIDTH; j++) {
+      let heroK = -1;
+      if (game.isVertical) {
+        if (j === game.x && i >= game.y && i < game.y + 3) heroK = i - game.y;
+      } else {
+        if (i === game.y && j >= game.x && j < game.x + 3) heroK = j - game.x;
+      }
+
+      let cls = 'cell', ch = '';
+      if (heroK >= 0 && heroK < game.name.length) {
+        ch = game.name[heroK];
+        const under = game.mapData[i][j];
+        if (game.end)              cls += ' hero-end';
+        else if (under === "刺")   cls += ' hero-spike';
+        else if (under === "坑")   cls += ' hero-pit';
+        else                       cls += ' hero';
+      } else {
+        const c = game.mapData[i][j];
+        ch = c;
+        if      (c === "墙") cls += ' wall';
+        else if (c === "赢") cls += ' win';
+        else if (c === "摸") cls += ' touch';
+        else if (c === "转") cls += ' spin';
+        else if (c === "刺") cls += ' spike';
+        else if (c === "坑") cls += ' pit';
+      }
+      html += `<div class="${cls}">${ch}</div>`;
+    }
+  }
+  gridEl.innerHTML = html;
+
+  // 消息
+  let m = '', cls = 'msg';
+  if (game.mode === 'playing') {
+    m = game.msg;
+  } else if (game.mode === 'dead') {
+    m = game.deathMsg + ' —— 按回车重来哦！';
+    cls = 'msg bad';
+  } else if (game.mode === 'wonLevel') {
+    m = '过关啦！按回车继续哦！';
+    cls = 'msg good';
+  } else if (game.mode === 'gameOver') {
+    m = '过关啦！' + game.endMsg;
+    cls = 'msg good';
+  }
+  msgEl.textContent = m;
+  msgEl.className = cls;
+
+  // 继续按钮
+  if (game.mode === 'dead' || game.mode === 'wonLevel') {
+    continueBtn.style.display = 'inline-block';
+    continueBtn.textContent = game.mode === 'dead' ? '重来 ⏎' : '继续 ⏎';
+  } else {
+    continueBtn.style.display = 'none';
+  }
+}
+
+// ===== 输入处理 =====
+function handleInput(rawKey) {
+  let k = rawKey.toLowerCase();
+  if      (k === 'arrowup')    k = 'w';
+  else if (k === 'arrowdown')  k = 's';
+  else if (k === 'arrowleft')  k = 'a';
+  else if (k === 'arrowright') k = 'd';
+
+  if (game.mode === 'gameOver') return;
+
+  if (game.mode === 'dead' || game.mode === 'wonLevel') {
+    if (k === 'enter' || k === ' ') {
+      loadMap(levels[game.level]);
+      game.mode = 'playing';
+      game.msg = hints[game.level];
+      render();
+    }
+    return;
+  }
+
+  // playing
+  if (k === 'r') {
+    loadMap(levels[game.level]);
+    game.msg = hints[game.level];
+    render();
+    return;
+  }
+  if (k === 'w' || k === 'a' || k === 's' || k === 'd') {
+    step(k);
+    render();
+  }
+}
+
+function restartGame() {
+  game.level = 0;
+  game.end = false;
+  game.name = game.originalName;
+  game.mode = 'playing';
+  loadMap(levels[0]);
+  game.msg = hints[0];
+  render();
+}
+
+// 键盘
+document.addEventListener('keydown', (e) => {
+  const k = e.key;
+  if ([' ', 'Enter', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(k)) {
+    e.preventDefault();
+  }
+  handleInput(k);
+});
+
+// 屏幕按钮
+document.querySelectorAll('button[data-key]').forEach(btn => {
+  btn.addEventListener('click', () => handleInput(btn.dataset.key));
+});
+document.getElementById('restartBtn').addEventListener('click', restartGame);
+
+// 启动
+restartGame();
+</script>
+</body>
+</html>
