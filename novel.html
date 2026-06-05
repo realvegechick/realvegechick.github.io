@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>余烬纪 · 卷一《想起炉火的孩子》</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f4ece0; --panel:#efe5d6; --ink:#3a2e22; --ink-soft:#7a6a55;
+    --line:#e0d4c0; --accent:#b5651d; --accent-soft:#c9882f; --sel:#e9dcc6;
+    --shadow:rgba(60,40,20,.10);
+  }
+  html.dark{
+    --bg:#1b1713; --panel:#221d18; --ink:#d9cdbb; --ink-soft:#9a8a73;
+    --line:#332b22; --accent:#d68a3c; --accent-soft:#c9772f; --sel:#2c241b;
+    --shadow:rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"Noto Serif SC","Songti SC","STSong",STKaiti,serif;
+    line-height:1.95; -webkit-font-smoothing:antialiased;
+    transition:background .3s,color .3s;
+  }
+  a{color:inherit;text-decoration:none;}
+  ::selection{background:var(--sel);}
+
+  /* 顶栏 */
+  header{
+    position:sticky;top:0;z-index:20;
+    background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:14px;
+    padding:12px 20px;
+  }
+  header .menu-btn{display:none;background:none;border:1px solid var(--line);color:var(--ink);
+    border-radius:8px;padding:6px 10px;font-size:18px;cursor:pointer;line-height:1;}
+  header .brand{font-weight:700;letter-spacing:.04em;font-size:16px;}
+  header .brand small{color:var(--ink-soft);font-weight:400;margin-left:8px;font-size:13px;}
+  header .spacer{flex:1;}
+  header .theme-btn{background:none;border:1px solid var(--line);color:var(--ink);
+    border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;font-family:inherit;}
+
+  .wrap{display:flex;max-width:1100px;margin:0 auto;}
+
+  /* 目录 */
+  nav#toc{
+    width:266px;flex:none;
+    border-right:1px solid var(--line);
+    padding:22px 0;
+    height:calc(100vh - 53px);position:sticky;top:53px;overflow-y:auto;
+  }
+  nav#toc .toc-head{padding:0 22px 10px;color:var(--ink-soft);font-size:12px;letter-spacing:.18em;}
+  nav#toc ol{list-style:none;margin:0;padding:0;counter-reset:c;}
+  nav#toc li a{
+    display:block;padding:8px 22px 8px 22px;color:var(--ink-soft);font-size:14.5px;
+    border-left:3px solid transparent;transition:.15s;
+  }
+  nav#toc li a:hover{color:var(--ink);background:var(--panel);}
+  nav#toc li a.active{color:var(--accent);border-left-color:var(--accent);font-weight:500;background:var(--panel);}
+
+  /* 正文 */
+  main{flex:1;min-width:0;padding:46px 8px 120px;}
+  article{max-width:680px;margin:0 auto;padding:0 24px;}
+  article h2{
+    font-size:27px;font-weight:700;letter-spacing:.02em;
+    text-align:center;margin:.2em 0 1.6em;padding-bottom:.9em;
+    border-bottom:1px solid var(--line);
+  }
+  article p{margin:0 0 1.15em;text-indent:2em;font-size:18px;}
+  article hr{border:none;border-top:1px solid var(--line);margin:2em auto;width:40%;}
+  article blockquote{color:var(--ink-soft);border-left:3px solid var(--line);margin:1.4em 0;padding:.2em 1.2em;}
+
+  .pager{max-width:680px;margin:40px auto 0;padding:0 24px;display:flex;justify-content:space-between;gap:12px;}
+  .pager button{
+    flex:1;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    border-radius:10px;padding:13px 16px;font-size:15px;cursor:pointer;font-family:inherit;transition:.15s;
+  }
+  .pager button:hover:not(:disabled){border-color:var(--accent);color:var(--accent);}
+  .pager button:disabled{opacity:.4;cursor:default;}
+
+  .loading{text-align:center;color:var(--ink-soft);padding:60px 0;}
+
+  /* 移动端 */
+  #scrim{display:none;}
+  @media(max-width:820px){
+    header .menu-btn{display:block;}
+    nav#toc{
+      position:fixed;left:0;top:0;height:100vh;z-index:40;width:280px;
+      background:var(--bg);transform:translateX(-100%);transition:transform .25s;
+      border-right:1px solid var(--line);padding-top:18px;
+    }
+    nav#toc.open{transform:none;box-shadow:0 0 40px var(--shadow);}
+    #scrim.show{display:block;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:35;}
+    main{padding-top:28px;}
+    article h2{font-size:23px;}
+    article p{font-size:17.5px;}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <button class="menu-btn" id="menuBtn" aria-label="目录">☰</button>
+    <div class="brand">余烬纪 · 卷一<small>想起炉火的孩子 · 篇一</small></div>
+    <div class="spacer"></div>
+    <button class="theme-btn" id="themeBtn">夜间</button>
+  </header>
+
+  <div class="wrap">
+    <nav id="toc">
+      <div class="toc-head">篇一 · 哑火少年的火星</div>
+      <ol id="tocList"></ol>
+    </nav>
+    <main>
+      <article id="content"><div class="loading">正在点燃炉火……</div></article>
+      <div class="pager">
+        <button id="prevBtn">← 上一章</button>
+        <button id="nextBtn">下一章 →</button>
+      </div>
+    </main>
+  </div>
+  <div id="scrim"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+const chapters = [
+  {f:'ch01', t:'第一章 · 雪停的村子'},
+  {f:'ch02', t:'第二章 · 灰来了'},
+  {f:'ch03', t:'第三章 · 记住我'},
+  {f:'ch04', t:'第四章 · 界碑城'},
+  {f:'ch05', t:'第五章 · 刻名的女孩'},
+  {f:'ch06', t:'第六章 · 世界的来历'},
+  {f:'ch07', t:'第七章 · 晨曦旧卷'},
+  {f:'ch08', t:'第八章 · 同窗'},
+  {f:'ch09', t:'第九章 · 城墙上'},
+  {f:'ch10', t:'第十章 · 灰讯'},
+  {f:'ch11', t:'第十一章 · 触碑'},
+  {f:'ch12', t:'第十二章 · 空出的位子'},
+  {f:'ch13', t:'第十三章 · 教区来的人'},
+  {f:'ch14', t:'第十四章 · 拆碑'},
+  {f:'ch15', t:'第十五章 · 守灰人'},
+  {f:'ch16', t:'第十六章 · 火星'},
+  {f:'ch17', t:'第十七章 · 歧路'},
+];
+
+const tocList = document.getElementById('tocList');
+const content = document.getElementById('content');
+const prevBtn = document.getElementById('prevBtn');
+const nextBtn = document.getElementById('nextBtn');
+const toc = document.getElementById('toc');
+const scrim = document.getElementById('scrim');
+let cur = 0;
+
+chapters.forEach((c,i)=>{
+  const li=document.createElement('li');
+  const a=document.createElement('a');
+  a.href='#'+c.f; a.textContent=c.t;
+  a.onclick=e=>{e.preventDefault(); go(i);};
+  li.appendChild(a); tocList.appendChild(li);
+});
+const links=[...tocList.querySelectorAll('a')];
+
+async function go(i, noScroll){
+  if(i<0||i>=chapters.length) return;
+  cur=i;
+  links.forEach((a,k)=>a.classList.toggle('active',k===i));
+  content.innerHTML='<div class="loading">正在点燃炉火……</div>';
+  try{
+    const res=await fetch('novel/'+chapters[i].f+'.md',{cache:'no-cache'});
+    if(!res.ok) throw new Error(res.status);
+    const md=await res.text();
+    content.innerHTML=marked.parse(md);
+  }catch(err){
+    content.innerHTML='<div class="loading">章节加载失败（'+err.message+'）。<br>请确认 novel/ 文件夹与本页同级，并通过 https 访问。</div>';
+  }
+  prevBtn.disabled=(i===0);
+  nextBtn.disabled=(i===chapters.length-1);
+  history.replaceState(null,'','#'+chapters[i].f);
+  closeMenu();
+  if(!noScroll) window.scrollTo({top:0,behavior:'instant'});
+}
+
+prevBtn.onclick=()=>go(cur-1);
+nextBtn.onclick=()=>go(cur+1);
+
+// 移动端目录
+const menuBtn=document.getElementById('menuBtn');
+function openMenu(){toc.classList.add('open');scrim.classList.add('show');}
+function closeMenu(){toc.classList.remove('open');scrim.classList.remove('show');}
+menuBtn.onclick=()=>toc.classList.contains('open')?closeMenu():openMenu();
+scrim.onclick=closeMenu;
+
+// 主题
+const themeBtn=document.getElementById('themeBtn');
+function applyTheme(d){
+  document.documentElement.classList.toggle('dark',d);
+  themeBtn.textContent=d?'日间':'夜间';
+  localStorage.setItem('ember-theme',d?'dark':'light');
+}
+themeBtn.onclick=()=>applyTheme(!document.documentElement.classList.contains('dark'));
+applyTheme(localStorage.getItem('ember-theme')==='dark');
+
+// 键盘左右翻章
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowLeft') go(cur-1);
+  if(e.key==='ArrowRight') go(cur+1);
+});
+
+// 初始章节（按 hash）
+const start=chapters.findIndex(c=>'#'+c.f===location.hash);
+go(start>=0?start:0,true);
+</script>
+</body>
+</html>
