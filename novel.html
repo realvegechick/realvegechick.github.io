@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>拾火纪 · 卷一《想起炉火的孩子》</title>
+<title>拾火记 · 卷一《想起炉火的孩子》</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
@@ -56,6 +56,11 @@
   }
   nav#toc .toc-head{padding:0 22px 10px;color:var(--ink-soft);font-size:12px;letter-spacing:.18em;}
   nav#toc ol{list-style:none;margin:0;padding:0;counter-reset:c;}
+  nav#toc li.part-head{
+    padding:18px 22px 7px;color:var(--ink-soft);font-size:12px;
+    letter-spacing:.08em;border-top:1px solid var(--line);
+  }
+  nav#toc li.part-head:first-child{border-top:none;padding-top:4px;}
   nav#toc li a{
     display:block;padding:8px 22px 8px 22px;color:var(--ink-soft);font-size:14.5px;
     border-left:3px solid transparent;transition:.15s;
@@ -105,14 +110,14 @@
 <body>
   <header>
     <button class="menu-btn" id="menuBtn" aria-label="目录">☰</button>
-    <div class="brand">拾火纪 · 卷一<small>想起炉火的孩子 · 篇一</small></div>
+    <div class="brand">拾火记 · 卷一<small id="brandSub">想起炉火的孩子 · 篇一</small></div>
     <div class="spacer"></div>
     <button class="theme-btn" id="themeBtn">夜间</button>
   </header>
 
   <div class="wrap">
     <nav id="toc">
-      <div class="toc-head">篇一 · 哑火少年的火星</div>
+      <div class="toc-head">卷一目录</div>
       <ol id="tocList"></ol>
     </nav>
     <main>
@@ -128,23 +133,41 @@
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
 const chapters = [
-  {f:'ch01', t:'第一章 · 雪停的村子'},
-  {f:'ch02', t:'第二章 · 灰来了'},
-  {f:'ch03', t:'第三章 · 记住我'},
-  {f:'ch04', t:'第四章 · 界碑城'},
-  {f:'ch05', t:'第五章 · 刻名的女孩'},
-  {f:'ch06', t:'第六章 · 世界的来历'},
-  {f:'ch07', t:'第七章 · 晨曦旧卷'},
-  {f:'ch08', t:'第八章 · 同窗'},
-  {f:'ch09', t:'第九章 · 城墙上'},
-  {f:'ch10', t:'第十章 · 灰讯'},
-  {f:'ch11', t:'第十一章 · 触碑'},
-  {f:'ch12', t:'第十二章 · 空出的位子'},
-  {f:'ch13', t:'第十三章 · 教区来的人'},
-  {f:'ch14', t:'第十四章 · 拆碑'},
-  {f:'ch15', t:'第十五章 · 守灰人'},
-  {f:'ch16', t:'第十六章 · 火星'},
-  {f:'ch17', t:'第十七章 · 歧路'},
+  {f:'ch01', p:'篇一', t:'第一章 · 雪停的村子'},
+  {f:'ch02', p:'篇一', t:'第二章 · 灰来了'},
+  {f:'ch03', p:'篇一', t:'第三章 · 记住我'},
+  {f:'ch04', p:'篇一', t:'第四章 · 界碑城'},
+  {f:'ch05', p:'篇一', t:'第五章 · 刻名的女孩'},
+  {f:'ch06', p:'篇一', t:'第六章 · 世界的来历'},
+  {f:'ch07', p:'篇一', t:'第七章 · 故纸堆'},
+  {f:'ch08', p:'篇一', t:'第八章 · 同窗'},
+  {f:'ch09', p:'篇一', t:'第九章 · 城墙上'},
+  {f:'ch10', p:'篇一', t:'第十章 · 灰讯'},
+  {f:'ch11', p:'篇一', t:'第十一章 · 触碑'},
+  {f:'ch12', p:'篇一', t:'第十二章 · 空出的位子'},
+  {f:'ch13', p:'篇一', t:'第十三章 · 教区来的人'},
+  {f:'ch14', p:'篇一', t:'第十四章 · 拆碑'},
+  {f:'ch15', p:'篇一', t:'第十五章 · 守灰人'},
+  {f:'ch16', p:'篇一', t:'第十六章 · 火星'},
+  {f:'ch17', p:'篇一', t:'第十七章 · 歧路'},
+  {f:'ch18', p:'篇二', t:'第十八章 · 烧炭棚'},
+  {f:'ch19', p:'篇二', t:'第十九章 · 辉环之外'},
+  {f:'ch20', p:'篇二', t:'第二十章 · 七声旧路'},
+  {f:'ch21', p:'篇二', t:'第二十一章 · 留麦的人'},
+  {f:'ch22', p:'篇二', t:'第二十二章 · 遗忘小径'},
+  {f:'ch23', p:'篇二', t:'第二十三章 · 七声桥'},
+  {f:'ch24', p:'篇二', t:'第二十四章 · 最后的界桩'},
+  {f:'ch25', p:'篇二', t:'第二十五章 · 南环'},
+  {f:'ch26', p:'篇二', t:'第二十六章 · 石歌'},
+  {f:'ch27', p:'篇二', t:'第二十七章 · 归乡罗盘'},
+  {f:'ch28', p:'篇二', t:'第二十八章 · 问火的人'},
+  {f:'ch29', p:'篇二', t:'第二十九章 · 价码'},
+  {f:'ch30', p:'篇二', t:'第三十章 · 界锚'},
+  {f:'ch31', p:'篇二', t:'第三十一章 · 门内之路'},
+  {f:'ch32', p:'篇二', t:'第三十二章 · 锚齿'},
+  {f:'ch33', p:'篇二', t:'第三十三章 · 炉心初醒'},
+  {f:'ch34', p:'篇二', t:'第三十四章 · 门槛'},
+  {f:'ch35', p:'篇二', t:'第三十五章 · 停炉之日'},
 ];
 
 const tocList = document.getElementById('tocList');
@@ -153,9 +176,16 @@ const prevBtn = document.getElementById('prevBtn');
 const nextBtn = document.getElementById('nextBtn');
 const toc = document.getElementById('toc');
 const scrim = document.getElementById('scrim');
+const brandSub = document.getElementById('brandSub');
 let cur = 0;
 
 chapters.forEach((c,i)=>{
+  if(i===0 || chapters[i-1].p!==c.p){
+    const part=document.createElement('li');
+    part.className='part-head';
+    part.textContent=c.p==='篇一'?'篇一 · 哑火少年的火星':'篇二 · 问火的人';
+    tocList.appendChild(part);
+  }
   const li=document.createElement('li');
   const a=document.createElement('a');
   a.href='#'+c.f; a.textContent=c.t;
@@ -173,12 +203,14 @@ async function go(i, noScroll){
     const res=await fetch('novel/'+chapters[i].f+'.md',{cache:'no-cache'});
     if(!res.ok) throw new Error(res.status);
     const md=await res.text();
-    content.innerHTML=marked.parse(md);
+    content.innerHTML='<h2>'+chapters[i].t+'</h2>'+marked.parse(md);
   }catch(err){
     content.innerHTML='<div class="loading">章节加载失败（'+err.message+'）。<br>请确认 novel/ 文件夹与本页同级，并通过 https 访问。</div>';
   }
   prevBtn.disabled=(i===0);
   nextBtn.disabled=(i===chapters.length-1);
+  brandSub.textContent='想起炉火的孩子 · '+chapters[i].p;
+  document.title=chapters[i].t.replace(' · ',' ')+'｜拾火记';
   history.replaceState(null,'','#'+chapters[i].f);
   closeMenu();
   if(!noScroll) window.scrollTo({top:0,behavior:'instant'});
