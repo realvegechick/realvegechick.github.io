@@ -490,6 +490,27 @@ def _ai_attack_damage(state: dict, attacker: str, attack_card: dict, effect: dic
 def _ai_should_use_guard(state: dict, attacker: str, attack_card: dict, effect: dict) -> bool:
     """AI 是否应弃卫兵抵消。收益 = 阻止的损失 + 卫兵抵消后抽 1 张牌；
     成本 = 弃掉卫兵的机会成本（未来还能被再触发一次）。"""
+    # 勇者攻击且不会从 AI 手牌得分时，AI 不亏金币、只损失一张手牌，不值得费一张卫兵。
+    if attacker == "player" and attack_card["key"] in {"hero4", "hero5", "hero_crest"}:
+        params = effect.get("params", {}) if effect else {}
+        if not params.get("use_holy_sword"):
+            target_uid = params.get("target_uid")
+            target = next(
+                (c for c in state["hands"]["ai"] if c["uid"] == target_uid), None
+            )
+            hero_def = CARDS[attack_card["key"]]
+            if target is not None:
+                target_def = CARDS[target["key"]]
+                earns_coin = (
+                    hero_def.level is not None
+                    and target_def.level is not None
+                    and hero_def.level > target_def.level
+                ) or (
+                    attack_card["key"] == "hero_crest"
+                    and (target_def.level is not None or "monster" in target_def.crests)
+                )
+                if not earns_coin:
+                    return False
     damage = _ai_attack_damage(state, attacker, attack_card, effect)
     # 抵消收益 ≈ 阻止损失 + refund 行动点（如果对方还有更多牌可打，价值有限）+ 抽 1
     # 卫兵机会成本：即便没有下一次攻击，也占手位，价值 ~40
@@ -819,17 +840,22 @@ def _resolve_attack_effect(state: dict, player: str, card: dict, effect: dict) -
             field_slot = zone.index(target) if source_zone == "field" else None
             target = _find_and_pop(zone, target["uid"])
             state["hands"][player].append(target)
+            move_message = (
+                f"对手的女巫取得“{CARDS[target['key']].name}”并加入手牌"
+                if player == "ai"
+                else f"女巫取得“{CARDS[target['key']].name}”并加入手牌"
+            )
             _move_event(
                 state,
                 player,
                 target,
-                f"女巫取得“{CARDS[target['key']].name}”并加入手牌",
+                move_message,
                 source_zone=source_zone,
                 destination_zone="hand",
                 source_owner=opponent,
                 destination_owner=player,
                 field_slot=field_slot,
-                record_history=False,
+                record_history=True,
             )
             _log(state, f"女巫宣言“{card_name}”并取得 1 张牌", "monster")
         else:
@@ -842,7 +868,7 @@ def _resolve_attack_effect(state: dict, player: str, card: dict, effect: dict) -
                     card=card,
                     title="对方行动",
                     skippable=False,
-                    record_history=False,
+                    record_history=True,
                 )
             else:
                 _event(state, "notice", player, f"宣言「{card_name}」：未命中。", card=card)
@@ -1208,7 +1234,8 @@ def _end_turn(state: dict, player: str, *, force: bool = False) -> None:
             return
         while len(state["hands"][player]) > 4:
             # 留住卫兵、持续牌和高影响攻击牌，优先丢弃低价值手牌。
-            card = min(state["hands"][player], key=lambda held: _ai_score(state, held))
+            # 用弃牌专用估值：留在手里不会立即暴露给玩家的解牌，因此不叠加"打出后被解"的惩罚。
+            card = min(state["hands"][player], key=lambda held: _ai_hold_score(state, held))
             state["hands"][player].remove(card)
             destination = f"{CARDS[card['key']].faction}_discard"
             _discard(state, card)
@@ -1685,6 +1712,21 @@ def _ai_fire_dragon_gain(state: dict) -> int:
         # 火龙落场后即可免费打出龙炎，计入本回合即时破坏与得分收益。
         value += _ai_dragonfire_gain(state) + 45
     return value
+
+
+def _ai_hold_score(state: dict, card: dict) -> int:
+    """AI 弃牌时评估手牌保留价值。与 _ai_score 的区别：不减去"打出后被解"的惩罚，
+    因为留在手里的持续牌本身没有暴露风险。"""
+    key = card["key"]
+    score = _ai_card_value(card)
+    if key in {"princess", "demon_king", "fire_dragon", "holy_grail", "holy_sword"}:
+        score += 30
+    if key == "princess":
+        score += max(0, 4 - state["coins"]["ai"]) * 8
+    if key == "guard":
+        # 卫兵是纯防御性资源，即使当前没有攻击也值得保留一张。
+        score += 20
+    return score
 
 
 def _ai_score(state: dict, card: dict) -> int:
