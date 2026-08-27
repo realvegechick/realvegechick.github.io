@@ -1824,11 +1824,69 @@ def _ai_score(state: dict, card: dict) -> int:
     return score
 
 
+def _ai_card_scores_coin(state: dict, card: dict) -> bool:
+    """判断这张牌用 _ai_params 选定的目标是否会让 AI 立即获得 1 枚金币。
+    仅涵盖打出即结算的攻击/普通牌；持续牌激活走 _ai_activate_persistent 另行处理。"""
+    key = card["key"]
+    params = _ai_params(state, card)
+    if key in {"hero4", "hero5", "hero_crest"}:
+        return _ai_hero_gain(state, card) > 0 or _ai_sword_hero_gain(state, card) > 0
+    if key == "dragonfire":
+        target_uid = params.get("target_uid")
+        if not target_uid:
+            return False
+        target = next((c for c in state["fields"]["player"] if c["uid"] == target_uid), None)
+        return target is not None and CARDS[target["key"]].level is not None
+    if key == "mage":
+        return _ai_mage_guaranteed_coin(state)
+    if key == "goblin":
+        return _ai_goblin_gain(state) > 0
+    if key == "blacksmith":
+        chosen_uids = set(params.get("card_uids", []))
+        if len(chosen_uids) != 2:
+            return False
+        chosen = [c for c in state["hands"]["ai"] if c["uid"] in chosen_uids]
+        return len(chosen) == 2 and _same_mark(chosen)
+    return False
+
+
+PLAYER_SCORING_PERSISTENTS = {"princess", "demon_king"}
+
+
+def _ai_disrupts_player_scoring(state: dict, card: dict) -> bool:
+    """判断这张牌是否会立即移除玩家场上的公主/魔王等持续得分手段。"""
+    scoring_persistents = [
+        target for target in state["fields"]["player"]
+        if target["key"] in PLAYER_SCORING_PERSISTENTS
+    ]
+    if not scoring_persistents:
+        return False
+    key = card["key"]
+    params = _ai_params(state, card)
+    if key == "dragonfire":
+        target_uid = params.get("target_uid")
+        return any(t["uid"] == target_uid for t in scoring_persistents)
+    if key == "witch":
+        name = params.get("card_name")
+        return any(CARDS[t["key"]].name == name for t in scoring_persistents)
+    if key in {"hero4", "hero5", "hero_crest"} and params.get("use_holy_sword"):
+        target_uid = params.get("field_target_uid")
+        return any(t["uid"] == target_uid for t in scoring_persistents)
+    return False
+
+
 def _ai_play_priority(state: dict, card: dict) -> tuple[int, int]:
     """优先使用会因比分变化而失效的牌，再比较通常的场面估值。"""
+    ai_coins = state["coins"]["ai"]
+    player_coins = state["coins"]["player"]
+    # 赛点场景：AI 4 分时得分即胜，优先级最高；玩家 4 分时破坏其持续得分手段次之。
+    if ai_coins == 4 and _ai_card_scores_coin(state, card):
+        return (4, _ai_score(state, card))
+    if player_coins == 4 and _ai_disrupts_player_scoring(state, card):
+        return (3, _ai_score(state, card))
     goblin_window = (
         card["key"] == "goblin"
-        and state["coins"]["ai"] < state["coins"]["player"]
+        and ai_coins < player_coins
     )
     skeleton_window = card["key"] == "skeleton" and _ai_has_high_value_skeleton_target(state)
     urgent_window = 2 if goblin_window else 1 if skeleton_window else 0
