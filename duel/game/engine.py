@@ -1599,6 +1599,30 @@ def _ai_hero_gain(state: dict, hero: dict) -> int:
     return best + 80 + (100 if state["coins"]["ai"] == 4 else 0)
 
 
+def _ai_hero_storage_penalty(state: dict, hero: dict) -> int:
+    """勇者储备惩罚：AI 已知玩家手牌里没有能让本勇者得分的目标时，
+    储备价值下调；known 集合为空视为信息不足，不惩罚。"""
+    known = set(state["ai_memory"].get("known_player_hand", []))
+    known_hand = [card for card in state["hands"]["player"] if card["uid"] in known]
+    if not known_hand:
+        return 0
+    # known_hand 全为皇室：勇者对整个已知手牌都无目标；
+    # 或存在非皇室但没有一张能让本勇者得分：勇者当前也无收益。
+    if any(
+        CARDS[card["key"]].faction != "royal"
+        and _ai_hero_target_value(hero, card) >= 100
+        for card in known_hand
+    ):
+        return 0
+    unknown_count = len(state["hands"]["player"]) - len(known_hand)
+    # 已知覆盖越完整，惩罚越大；剩余未知的手牌可能仍是非皇室，保留少量储备价值。
+    if unknown_count <= 0:
+        return -60
+    if unknown_count == 1:
+        return -40
+    return -25
+
+
 def _ai_sword_target_value(state: dict, hero: dict, target: dict) -> int:
     hero_level = CARDS[hero["key"]].level
     target_level = CARDS[target["key"]].level
@@ -1756,7 +1780,7 @@ def _ai_score(state: dict, card: dict) -> int:
     elif key == "bat":
         score += _ai_bat_gain(state)
     elif key in {"hero4", "hero5", "hero_crest"}:
-        score += _ai_hero_gain(state, card) + _ai_sword_hero_gain(state, card)
+        score += _ai_hero_gain(state, card) + _ai_sword_hero_gain(state, card) + _ai_hero_storage_penalty(state, card)
     elif key == "monk":
         score += _ai_monk_gain(state)
     elif key == "skeleton":
@@ -1840,7 +1864,7 @@ def _ai_tavern_card_value(state: dict, card: dict) -> int:
     if card["key"] == "dragonfire" and state["fields"]["player"]:
         value += _ai_dragonfire_gain(state)
     elif card["key"] in {"hero4", "hero5", "hero_crest"}:
-        value += _ai_hero_gain(state, card) + _ai_sword_hero_gain(state, card)
+        value += _ai_hero_gain(state, card) + _ai_sword_hero_gain(state, card) + _ai_hero_storage_penalty(state, card)
         if any(
             held["key"] == "holy_sword" and not held.get("tapped")
             for held in state["fields"]["ai"]
