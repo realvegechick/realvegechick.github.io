@@ -1,0 +1,296 @@
+.battle-log-rail {
+  position: relative;
+  z-index: 30;
+  display: grid;
+  grid-template-rows: 42px minmax(0, 1fr);
+  padding: 6px 5px;
+  overflow: visible;
+  border-color: #8e713c;
+  background: linear-gradient(180deg, #111836, #05091e);
+  min-width: 0;
+}
+
+/* 紧凑布局中给战斗日志多留一点横向空间，避免卡牌边框显得拥挤。 */
+@media (max-width: 1350px), (max-height: 820px) {
+  .storybook-shell {
+    --phase-width: 64px;
+  }
+}
+
+.battle-log-title {
+  display: grid;
+  place-items: center;
+  color: #f3cf76;
+  font: 800 9px ui-monospace, monospace;
+  text-align: center;
+}
+
+.battle-log-list {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+}
+
+/* 默认滚动条完全隐形，不占位（webkit overlay 模式） */
+.battle-log-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+.battle-log-list::-webkit-scrollbar-track { background: transparent; }
+.battle-log-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+
+/* 滚动进行时才显示（由 JS 加 is-scrolling class） */
+.battle-log-list.is-scrolling {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+.battle-log-list.is-scrolling::-webkit-scrollbar { width: 0; height: 0; }
+.battle-log-list.is-scrolling::-webkit-scrollbar-thumb { background: transparent; }
+.battle-log-list.is-scrolling::-webkit-scrollbar-track { background: transparent; }
+
+.battle-log-entry {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 74px;
+  flex: 0 0 74px;
+  padding: 4px;
+  display: grid;
+  place-items: center;
+  color: #d5dded;
+  background: #0b1633;
+  border: 1px solid #435779;
+  cursor: help;
+}
+
+.battle-log-thumb .game-card {
+  box-shadow: none;
+}
+
+.battle-log-entry.actor-player { border-color: #367fb0; }
+.battle-log-entry.actor-ai { border-color: #9c4854; }
+
+.is-history-location {
+  position: relative;
+  z-index: 45 !important;
+  outline: 3px solid #ffe58a !important;
+  outline-offset: 3px;
+  box-shadow: 0 0 10px #ffe58a, 0 0 24px #68ddf0cc !important;
+  filter: brightness(1.2) saturate(1.15);
+  animation: history-location-pulse .8s steps(2, end) infinite;
+}
+
+@keyframes history-location-pulse {
+  50% { outline-color: #68ddf0; box-shadow: 0 0 8px #68ddf0, 0 0 28px #ffe58acc !important; }
+}
+.battle-log-entry:hover,
+.battle-log-entry:focus-visible {
+  color: #fff4cc;
+  border-color: #f1c665;
+  outline: none;
+  box-shadow: 0 0 10px #e7b95566;
+}
+
+.battle-log-thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  margin: 0;
+  transform: translate(-50%, -50%);
+  flex: 0 0 auto;
+}
+.battle-log-thumb .card-mini { width: 42px; height: 62px; pointer-events: none; }
+.battle-log-thumb .card-back { position: relative; width: 42px; height: 62px; overflow: hidden; border-width: 1px; pointer-events: none; }
+.battle-log-thumb .card-back-image { width: 100%; height: 100%; object-fit: cover; }
+
+.battle-log-detail {
+  position: fixed;
+  z-index: 100;
+  top: 50%;
+  left: 90px;
+  right: auto;
+  width: 350px;
+  min-height: 76px;
+  padding: 12px;
+  display: none;
+  transform: translateY(-50%);
+  color: #e9e0ce;
+  background: linear-gradient(180deg, #111b3df7, #05091df7);
+  border: 2px solid #b98a3e;
+  box-shadow: 7px 9px 24px #000b;
+  pointer-events: none;
+}
+
+.battle-log-entry:hover .battle-log-detail,
+.battle-log-entry:focus-visible .battle-log-detail { display: block; }
+.battle-log-detail strong { display: block; font-size: 12px; line-height: 1.55; }
+.battle-log-detail p { margin: 7px 0 0; color: #c4cee1; font-size: 10px; line-height: 1.55; }
+.battle-log-detail small { display: block; margin-top: 8px; color: #aebbd4; line-height: 1.5; }
+.battle-log-cards { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 7px; }
+.battle-log-cards .card-mini { width: 48px; height: 70px; pointer-events: none; }
+.battle-log-empty { margin-top: 12px; color: #71809d; font-size: 8px; text-align: center; }
+
+.battle-log-turn-divider {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  min-height: 16px;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(2px, 1fr) auto minmax(2px, 1fr);
+  align-items: center;
+  gap: 3px;
+  padding: 1px 0;
+  color: #ffe093;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  text-shadow: 0 1px 0 #000;
+}
+
+.battle-log-turn-divider span {
+  min-width: 0;
+  padding: 0 3px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.battle-log-turn-divider i {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #8e713c);
+}
+
+.battle-log-turn-divider i:last-child {
+  background: linear-gradient(90deg, #8e713c, transparent);
+}
+
+.battle-log-turn-divider.actor-player { color: #a8e0ff; }
+.battle-log-turn-divider.actor-player i {
+  background: linear-gradient(90deg, transparent, #7fccef);
+}
+.battle-log-turn-divider.actor-player i:last-child {
+  background: linear-gradient(90deg, #7fccef, transparent);
+}
+
+.battle-log-turn-divider.actor-ai { color: #ffb2be; }
+.battle-log-turn-divider.actor-ai i {
+  background: linear-gradient(90deg, transparent, #e395a0);
+}
+.battle-log-turn-divider.actor-ai i:last-child {
+  background: linear-gradient(90deg, #e395a0, transparent);
+}
+
+.duel-seam.phase-center {
+  grid-template-columns: minmax(24px, 1fr) auto auto minmax(24px, 1fr);
+  gap: 10px;
+  pointer-events: auto;
+}
+.duel-seam.phase-center > span {
+  width: auto;
+  height: 30px;
+  min-width: 180px;
+  padding: 3px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  transform: none;
+  color: #eff7ff;
+  background: #0b1835ed;
+  border: 1px solid #65bfdc;
+  box-shadow: 0 0 12px #51b8d955;
+}
+.duel-seam.phase-center b { color: #ffe093; font-size: 11px; }
+.duel-seam.phase-center small { color: #a9bad4; font-size: 9px; }
+.duel-seam.phase-center button {
+  height: 28px;
+  padding: 0 12px;
+  color: #102031;
+  background: #6edbd7;
+  border: 1px solid #c2fbf6;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.duel-seam.phase-center.is-finished {
+  grid-template-columns: minmax(24px, 1fr) auto auto minmax(24px, 1fr);
+}
+
+.battle-result-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.battle-result-actions button:last-child {
+  color: #f4e8cd;
+  background: #26344f;
+  border-color: #8fa3c1;
+}
+
+.witch-name-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(76px, 1fr));
+  gap: 8px;
+  align-content: start;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.witch-name-card {
+  padding: 3px;
+  background: transparent;
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.witch-name-card.is-selected {
+  border-color: #ffe093;
+  box-shadow: 0 0 12px #ffe093aa;
+}
+
+.witch-name-card .card-field {
+  width: 70px;
+  height: 104px;
+}
+
+.witch-name-card.is-text {
+  min-height: 44px;
+  color: #f8edd7;
+  font-size: 12px;
+  font-weight: 700;
+  background: #0b1633;
+  border: 2px solid #435779;
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .witch-name-grid {
+    grid-template-columns: repeat(4, minmax(72px, 1fr));
+  }
+}

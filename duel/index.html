@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#100d24" />
+  <meta name="description" content="《小传说·对决》双人基础版 Web 卡牌游戏" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%2307102e'/%3E%3Cpath d='M12 18h40l-5 30H17z' fill='%23d8ad55'/%3E%3Cpath d='M19 17l7 8 6-13 6 13 7-8 2 24H17z' fill='%2376e2ec'/%3E%3C/svg%3E" />
+  <title>小传说·对决</title>
+  <!-- 本地版：拦截 /ranking 和 /admin 路由，再加载 shim 和主应用。 -->
+  <script>
+    (function () {
+      // 应用可能部署在子路径下（如 /duel/），basePath 是从根到应用根的前缀。
+      // 首次进入时，把当前 pathname 里 ranking/admin 段之前的部分作为 base。
+      var p = window.location.pathname;
+      var match = p.match(/^(.*?)(\/)?(ranking|admin)(\/|$)/);
+      var basePath = match ? match[1].replace(/\/$/, '') : p.replace(/\/[^/]*$/, '');
+      basePath = basePath || '';
+      function home() { return (basePath || '') + '/'; }
+      function sanitize(url) {
+        if (typeof url !== 'string') return url;
+        if (/(^|\/)(ranking|admin)(\/|$)/.test(url)) return home();
+        return url;
+      }
+      if (match) {
+        window.history.replaceState({}, '', home());
+      }
+      var origPush = window.history.pushState;
+      var origReplace = window.history.replaceState;
+      window.history.pushState = function (state, title, url) {
+        return origPush.call(this, state, title, sanitize(url));
+      };
+      window.history.replaceState = function (state, title, url) {
+        return origReplace.call(this, state, title, sanitize(url));
+      };
+    })();
+  </script>
+  <script src="./api-shim.js"></script>
+  <script type="module" crossorigin src="./assets/index-De2-oQMg.js?v=history-live-events-v19"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-LV2nnobs.css">
+  <link rel="stylesheet" crossorigin href="./assets/battle-log.css?v=cursor-tooltip-v19">
+  <style>
+    /* Pyodide 初次加载可能几秒，加个占位提示 */
+    .duel-loading-hint {
+      position: fixed; inset: auto 0 12px 0; text-align: center;
+      color: #bcd; font-size: 12px; pointer-events: none; z-index: 9999;
+      text-shadow: 0 1px 2px rgba(0,0,0,.6);
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="duel-loading-hint" class="duel-loading-hint">规则引擎加载中…</div>
+  <script>
+    // 滚动时给 .battle-log-list 加 is-scrolling，500ms 无滚动移除。
+    (function(){
+      const timers = new WeakMap();
+      document.addEventListener('scroll', function(e) {
+        const el = e.target;
+        if (!(el instanceof Element) || !el.classList.contains('battle-log-list')) return;
+        el.classList.add('is-scrolling');
+        const prev = timers.get(el);
+        if (prev) clearTimeout(prev);
+        timers.set(el, setTimeout(() => el.classList.remove('is-scrolling'), 500));
+      }, true);
+    })();
+
+    // 本地版直接移除"勇者排行榜""管理后台"按钮，并在 root 挂载后清除加载提示。
+    (function(){
+      const HIDDEN_TEXTS = new Set(['勇者排行榜', '管理后台']);
+      function scan() {
+        document.querySelectorAll('button').forEach(btn => {
+          const text = (btn.textContent || '').trim();
+          if (HIDDEN_TEXTS.has(text)) btn.remove();
+        });
+        // React 挂载后隐藏加载提示
+        const root = document.getElementById('root');
+        const hint = document.getElementById('duel-loading-hint');
+        if (root && root.childElementCount > 0 && hint) {
+          hint.remove();
+        }
+      }
+      const observer = new MutationObserver(scan);
+      observer.observe(document.body, { childList: true, subtree: true });
+      document.addEventListener('DOMContentLoaded', scan);
+    })();
+  </script>
+</body>
+</html>
