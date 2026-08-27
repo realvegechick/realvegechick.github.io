@@ -609,6 +609,19 @@ def _resolve_attack_effect(state: dict, player: str, card: dict, effect: dict) -
         number = int(params.get("number", 0))
         if number not in {1, 2, 3, 4}:
             raise GameError("法师需要宣言 1 到 4", details={"required": "number"})
+        # 对手法师宣言的数字对玩家可见，作为一条独立历史事件记录，避免后续 notice/move 里缺失该信息。
+        if player == "ai":
+            _event(
+                state,
+                "notice",
+                "ai",
+                f"对手的法师宣言 Lv.{number}",
+                card=card,
+                title="对方行动",
+                skippable=False,
+                record_history=True,
+                animate=False,
+            )
         matches = [c for c in state["hands"][opponent] if CARDS[c["key"]].level == number]
         if matches:
             # 被攻击方可以选择"放置 1 张 Lv=number 手牌到场上"，或"放弃 → 对方 +1 金币"。
