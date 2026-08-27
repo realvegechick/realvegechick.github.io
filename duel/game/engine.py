@@ -266,6 +266,7 @@ def _draw_card(state: dict, player: str, source: str, *, history_group: str | No
             card = state["tavern_faceup"].pop(index)
         except (ValueError, IndexError):
             raise GameError("这张酒馆牌已不可用")
+        card["_ai_revealed"] = True  # 酒馆取牌对双方都是公开信息
         state["hands"][player].append(card)
         if player == "player":
             _ai_remember_player_card(state, card)
@@ -806,6 +807,7 @@ def _resolve_attack_effect(state: dict, player: str, card: dict, effect: dict) -
         state["fields"][opponent].clear()
         for field_slot, target in enumerate(returned):
             target["tapped"] = False
+            target["_ai_revealed"] = True  # 曾在场上，对双方公开
             state["hands"][opponent].append(target)
             if opponent == "player":
                 _ai_remember_player_card(state, target)
@@ -852,6 +854,7 @@ def _resolve_attack_effect(state: dict, player: str, card: dict, effect: dict) -
             source_zone = "hand" if zone is state["hands"][opponent] else "field"
             field_slot = zone.index(target) if source_zone == "field" else None
             target = _find_and_pop(zone, target["uid"])
+            target["_ai_revealed"] = True  # 女巫宣言的名字对双方公开
             state["hands"][player].append(target)
             move_message = (
                 f"对手的女巫取得“{CARDS[target['key']].name}”并加入手牌"
@@ -959,6 +962,7 @@ def _resolve_effect(state: dict, player: str, card: dict, params: dict) -> None:
             if target is None:
                 raise GameError("僧侣选择的弃牌无效")
             target = _find_and_pop(state["royal_discard"], target["uid"])
+            target["_ai_revealed"] = True  # 从公开弃牌区取得
             state["hands"][player].append(target)
             if params.get("mode", "hand") == "play":
                 _play_card(
@@ -1008,6 +1012,7 @@ def _resolve_effect(state: dict, player: str, card: dict, params: dict) -> None:
             target = next((c for c in state["monster_deck"] if c["key"] == target_key), None)
         if target:
             target = _find_and_pop(state[source_zone], target["uid"])
+            target["_ai_revealed"] = True  # 龙蛋宣言目标牌名，对双方公开
             state["hands"][player].append(target)
             source_name = "魔物弃牌区" if source_zone == "monster_discard" else "魔物牌库"
             _move_event(
@@ -1173,6 +1178,7 @@ def _prepare_turn(state: dict, player: str) -> None:
     state["fields"][player] = [c for c in field if CARDS[c["key"]].persistent]
     for field_slot, card in returning:
         card["tapped"] = False
+        card["_ai_revealed"] = True  # 曾在场上，回手仍是公开的
         state["hands"][player].append(card)
         if player == "player":
             _ai_remember_player_card(state, card)
@@ -2141,6 +2147,12 @@ def _drive_ai(state: dict) -> None:
         playable.sort(key=lambda card: _ai_play_priority(state, card), reverse=True)
         if playable:
             card = _ai_preferred_scoring_hero(state, playable) or playable[0]
+            # 手里同 key 的候选中，优先打出已公开过的那张（信息已暴露，先打不额外泄露信息）。
+            same_key = [c for c in state["hands"]["ai"] if c["key"] == card["key"]]
+            if len(same_key) > 1:
+                revealed_first = next((c for c in same_key if c.get("_ai_revealed")), None)
+                if revealed_first is not None:
+                    card = revealed_first
             try:
                 _play_card(state, "ai", card["uid"], _ai_params(state, card))
                 continue
